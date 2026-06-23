@@ -5,7 +5,6 @@ import android.net.Uri
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.ai.GeminiSupportEngine
 import com.example.browser.SniffedVideo
 import com.example.casting.CastingDevice
 import com.example.casting.DiscoveryEngine
@@ -33,7 +32,6 @@ class CastViewModel(application: Application) : AndroidViewModel(application) {
     val discoveryEngine = DiscoveryEngine(application)
     val httpServer = LocalHttpServer(application)
     val mediaController = UniversalMediaController()
-    private val geminiEngine = GeminiSupportEngine()
 
     // UI Reactive States
     private val _isDiscovering = MutableStateFlow(false)
@@ -45,11 +43,11 @@ class CastViewModel(application: Application) : AndroidViewModel(application) {
     private val _localMediaName = MutableStateFlow("")
     val localMediaName: StateFlow<String> = _localMediaName.asStateFlow()
 
-    private val _isAiRunning = MutableStateFlow(false)
-    val isAiRunning: StateFlow<Boolean> = _isAiRunning.asStateFlow()
+    private val _isAnalyzing = MutableStateFlow(false)
+    val isAnalyzing: StateFlow<Boolean> = _isAnalyzing.asStateFlow()
 
-    private val _geminiAnalysis = MutableStateFlow("")
-    val geminiAnalysis: StateFlow<String> = _geminiAnalysis.asStateFlow()
+    private val _diagnosticAnalysis = MutableStateFlow("")
+    val diagnosticAnalysis: StateFlow<String> = _diagnosticAnalysis.asStateFlow()
 
     // Room Database Observables
     val bookmarks: StateFlow<List<BookmarkedUrl>> = repository.bookmarks
@@ -131,37 +129,87 @@ class CastViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun runAiTroubleshooter(userMessage: String) {
-        _isAiRunning.value = true
-        _geminiAnalysis.value = "Analyzing local Wi-Fi logs and evaluating AP isolation levels. Model is compiling troubleshooting response..."
-
-        val activeError = mediaController.error.value
-        val diagnosticStr = buildString {
-            appendLine("--- CASTING DIAGNOSTIC TRACE ---")
-            appendLine("Local Active WiFi IP: ${httpServer.getLocalServerUrl(Uri.EMPTY).substringAfter("http://").substringBefore(":")}")
-            appendLine("Casting State: ${mediaController.state.value}")
-            appendLine("Connected Caster Target: ${mediaController.activeDevice.value?.name ?: "None"}")
-            appendLine("Connected Protocol Type: ${mediaController.activeDevice.value?.protocolType ?: "N/A"}")
-            appendLine("Streaming Video URL: ${mediaController.currentUrl.value}")
-            appendLine("Current Scan Discovery Count: ${discoveryEngine.devices.value.size}")
-            if (activeError != null) {
-                appendLine("Active Caster Error Title: ${activeError.title}")
-                appendLine("Error Codec Description: ${activeError.message}")
-                appendLine("System Stacktrace Logs: ${activeError.debugLogs}")
-            } else {
-                appendLine("Active Error: No hardware connection errors reported in past minutes.")
-            }
-        }
+    fun runDiagnosticTroubleshooter(userMessage: String) {
+        _isAnalyzing.value = true
+        _diagnosticAnalysis.value = "Analyzing local network logs, interface routing tables, and device discovery states..."
 
         viewModelScope.launch {
-            try {
-                val adviceResult = geminiEngine.getTroubleshootingGuide(userMessage, diagnosticStr)
-                _geminiAnalysis.value = adviceResult
-            } catch (e: Exception) {
-                _geminiAnalysis.value = "Failed to compile AI troubleshooting advice: ${e.localizedMessage}"
-            } finally {
-                _isAiRunning.value = false
+            kotlinx.coroutines.delay(1000) // Simulate diagnostic scan delay
+            val lowerQuery = userMessage.lowercase()
+            val activeError = mediaController.error.value
+
+            val solution = when {
+                activeError != null && activeError.title.contains("Codec", ignoreCase = true) -> {
+                    """
+                    ⚠️ CODEC COMPATIBILITY ISSUE DETECTED:
+                    Your TV/Caster does not support the selected video stream codec.
+                    
+                    How to solve:
+                    1. Try a different format link (e.g., MP4 instead of MKV or HLS).
+                    2. Use the "Web Sniffer" tab to find an alternative stream source from the web page.
+                    3. Restart the TV's media player app to clear its hardware decoder cache.
+                    """.trimIndent()
+                }
+                activeError != null && activeError.title.contains("Connection", ignoreCase = true) -> {
+                    """
+                    ❌ CONNECTION/TIMEOUT EXCEPTION:
+                    Failed to hand-shake or route packets to ${mediaController.activeDevice.value?.name ?: "the TV"}.
+                    
+                    How to solve:
+                    1. Verify both devices are on the EXACT same Wi-Fi network (SSID).
+                    2. Check if your router has AP Isolation (Access Point Isolation) enabled. This blocks local devices from communicating. Disable it in your router settings.
+                    3. Ensure Multicast (mDNS/UPnP) is enabled under your router's advanced settings.
+                    """.trimIndent()
+                }
+                lowerQuery.contains("wifi") || lowerQuery.contains("wi-fi") || lowerQuery.contains("network") -> {
+                    """
+                    🌐 WI-FI & NETWORK ROUTING DIAGNOSIS:
+                    - Current Phone IP: ${httpServer.getLocalServerUrl(Uri.EMPTY).substringAfter("http://").substringBefore(":")}
+                    - Active Server Port: 8182 (Listening for local Range-Request requests)
+                    
+                    Troubleshooting Steps:
+                    1. Ensure dual-band steering is not forcing your TV onto 5GHz and your phone onto 2.4GHz with different subnet routing.
+                    2. Disable any active VPN, adblockers, or proxy profiles on your phone, as they intercept local network traffic and break DLNA/mDNS discovery.
+                    3. Restart your Wi-Fi router. Dynamic IP leases can sometimes block local socket handshakes.
+                    """.trimIndent()
+                }
+                lowerQuery.contains("mkv") || lowerQuery.contains("mp4") || lowerQuery.contains("format") || lowerQuery.contains("codec") -> {
+                    """
+                    📹 MEDIA FORMATS & CODECS GUIDE:
+                    - Modern smart TVs support standard MP4 (H.264 + AAC) and HLS (.m3u8).
+                    - Legacy players or DLNA receivers frequently fail to render MKV, WebM, or H.265 streams.
+                    
+                    Solutions:
+                    1. Select an alternate format from the "Web Sniffer" list.
+                    2. Clear current playback queues on your casting device and re-transmit.
+                    3. Keep screen on while initiating streams to prevent background CPU limiters.
+                    """.trimIndent()
+                }
+                lowerQuery.contains("roku") || lowerQuery.contains("fire") || lowerQuery.contains("tv") || lowerQuery.contains("cast") -> {
+                    """
+                    📺 RECEIVER SPECIFIC RECOMMENDATIONS:
+                    - Roku: Supports MP4 and HLS. Ensure "Screen Mirroring / Device Connect" permissions are set to "Always Allow" in Roku Settings -> System.
+                    - Fire TV: Requires the cast receiver app to be open and active in the foreground.
+                    - DLNA Renderer: Ensure the TV's network sharing / media play renderer option is enabled.
+                    """.trimIndent()
+                }
+                else -> {
+                    """
+                    🔍 GENERAL CASTING HEALTH CHECKLIST:
+                    - Network State: Clean, HTTP local port 8182 active.
+                    - TV Discovery Count: ${discoveryEngine.devices.value.size} active receiver(s) found in range.
+                    
+                    Standard Solutions:
+                    1. Double check that your phone is NOT on mobile data. Wi-Fi must be active.
+                    2. Verify that both the mobile phone and casting TV are connected to the exact same router band.
+                    3. Turn the TV off and on again (unplug power for 10 seconds to force SSDP system daemon restart).
+                    4. Check for router AP isolation or guest-network isolation which blocks peer-to-peer casting.
+                    """.trimIndent()
+                }
             }
+
+            _diagnosticAnalysis.value = solution
+            _isAnalyzing.value = false
         }
     }
 

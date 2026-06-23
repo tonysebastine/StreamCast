@@ -32,6 +32,7 @@ import androidx.compose.material.icons.filled.Cast
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -129,8 +130,8 @@ fun UniversalCastDashboard(
     var searchQuery by remember { mutableStateOf("") }
     val manualDevices = remember { mutableStateListOf<CastingDevice>() }
     
-    val isAiRunning by viewModel.isAiRunning.collectAsStateWithLifecycle()
-    val geminiAnalysis by viewModel.geminiAnalysis.collectAsStateWithLifecycle()
+    val isAnalyzing by viewModel.isAnalyzing.collectAsStateWithLifecycle()
+    val diagnosticAnalysis by viewModel.diagnosticAnalysis.collectAsStateWithLifecycle()
 
     // Add virtual/mock devices to the lists to allow user exploration when smart TVs are absent
     val simulatedRokuDemo = remember {
@@ -272,8 +273,8 @@ fun UniversalCastDashboard(
                 NavigationBarItem(
                     selected = selectedTab == 2,
                     onClick = { selectedTab = 2 },
-                    icon = { Icon(Icons.Default.Support, contentDescription = "Remote & AI Support Tab") },
-                    label = { Text("Remote & AI", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                    icon = { Icon(Icons.Default.Info, contentDescription = "Remote & Help Tab") },
+                    label = { Text("Remote & Help", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
                 )
             }
         }
@@ -1308,7 +1309,7 @@ fun UniversalCastDashboard(
                                                 text = if (activeErrLocal != null) 
                                                     activeErrLocal.title 
                                                 else 
-                                                    "AI Routing Support & Diagnostic Link",
+                                                    "Casting & Network Diagnostic Assistant",
                                                 fontWeight = FontWeight.Bold,
                                                 fontSize = 14.sp,
                                                 color = if (activeErrLocal != null) 
@@ -1357,9 +1358,9 @@ fun UniversalCastDashboard(
                                     Divider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
                                     Spacer(modifier = Modifier.height(14.dp))
 
-                                    // HIGH THINKING AI CHAT LAYOUT
+                                    // OFFLINE DIAGNOSTIC INTERACTIVE SECTION
                                     Text(
-                                        text = "Consult AI Caster Assistant (Thinking Mode Enabled)",
+                                        text = "Consult Local Network Troubleshooter",
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = MaterialTheme.colorScheme.primary,
@@ -1374,14 +1375,14 @@ fun UniversalCastDashboard(
                                         onValueChange = { userCommentText = it },
                                         textStyle = MaterialTheme.typography.bodyMedium,
                                         shape = RoundedCornerShape(12.dp),
-                                        placeholder = { Text("Ask about router AP isolation, TV player codecs or logs...", fontSize = 12.sp) },
+                                        placeholder = { Text("Search about router AP isolation, TV codecs, Wi-Fi...", fontSize = 12.sp) },
                                         keyboardOptions = KeyboardOptions(
                                             imeAction = ImeAction.Send
                                         ),
                                         keyboardActions = KeyboardActions(onSend = {
                                             if (userCommentText.trim().isNotEmpty()) {
                                                 keyboardController?.hide()
-                                                viewModel.runAiTroubleshooter(userCommentText)
+                                                viewModel.runDiagnosticTroubleshooter(userCommentText)
                                                 userCommentText = ""
                                             }
                                         }),
@@ -1402,7 +1403,7 @@ fun UniversalCastDashboard(
                                             TextButton(
                                                 onClick = { viewModel.mediaController.resetError() },
                                                 modifier = Modifier.padding(end = 8.dp)
-                                            ) {
+                                             ) {
                                                 Text("Reset Error", fontSize = 12.sp)
                                             }
                                         }
@@ -1411,12 +1412,12 @@ fun UniversalCastDashboard(
                                             onClick = {
                                                 keyboardController?.hide()
                                                 val query = userCommentText.ifEmpty { "Explain why casting fails and how to toggle dual-band multicast." }
-                                                viewModel.runAiTroubleshooter(query)
+                                                viewModel.runDiagnosticTroubleshooter(query)
                                                 userCommentText = ""
                                             },
                                             shape = RoundedCornerShape(12.dp)
                                         ) {
-                                            if (isAiRunning) {
+                                            if (isAnalyzing) {
                                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                                     CircularProgressIndicator(
                                                         modifier = Modifier.size(14.dp),
@@ -1424,16 +1425,16 @@ fun UniversalCastDashboard(
                                                         strokeWidth = 2.dp
                                                     )
                                                     Spacer(modifier = Modifier.width(6.dp))
-                                                    Text("AI Thinking...", fontSize = 11.sp)
+                                                    Text("Analyzing...", fontSize = 11.sp)
                                                 }
                                             } else {
-                                                Text("Troubleshoot with AI", fontSize = 11.sp)
+                                                Text("Troubleshoot Connection", fontSize = 11.sp)
                                             }
                                         }
                                     }
 
-                                    // Display the Gemini Deep Thinking results
-                                    if (geminiAnalysis.isNotEmpty()) {
+                                    // Display the Offline Diagnostics results
+                                    if (diagnosticAnalysis.isNotEmpty()) {
                                         Spacer(modifier = Modifier.height(14.dp))
                                         Card(
                                             shape = RoundedCornerShape(12.dp),
@@ -1447,16 +1448,15 @@ fun UniversalCastDashboard(
                                                     verticalAlignment = Alignment.CenterVertically
                                                 ) {
                                                     Row(verticalAlignment = Alignment.CenterVertically) {
-                                                        // Spark icon
                                                         Icon(
-                                                            Icons.Default.Support,
-                                                            contentDescription = "AI response sparkle",
+                                                            Icons.Default.Info,
+                                                            contentDescription = "Diagnostic response info icon",
                                                             tint = MaterialTheme.colorScheme.primary,
                                                             modifier = Modifier.size(16.dp)
                                                         )
                                                         Spacer(modifier = Modifier.width(6.dp))
                                                         Text(
-                                                            text = "AI System Engineer Response:",
+                                                            text = "Diagnostics Report & Guide:",
                                                             fontSize = 11.sp,
                                                             fontWeight = FontWeight.Bold,
                                                             color = MaterialTheme.colorScheme.primary
@@ -1472,7 +1472,7 @@ fun UniversalCastDashboard(
                                                             .clip(RoundedCornerShape(4.dp))
                                                             .clickable {
                                                                 val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                                                                val clip = android.content.ClipData.newPlainText("AI Troubleshooting Guide", geminiAnalysis)
+                                                                val clip = android.content.ClipData.newPlainText("Troubleshooting Guide", diagnosticAnalysis)
                                                                 clipboard.setPrimaryClip(clip)
                                                                 Toast.makeText(context, "Copied guide to clipboard!", Toast.LENGTH_SHORT).show()
                                                             }
@@ -1481,7 +1481,7 @@ fun UniversalCastDashboard(
                                                 }
                                                 Spacer(modifier = Modifier.height(8.dp))
                                                 Text(
-                                                    text = geminiAnalysis,
+                                                    text = diagnosticAnalysis,
                                                     fontSize = 12.sp,
                                                     lineHeight = 18.sp,
                                                     color = MaterialTheme.colorScheme.onSurface
