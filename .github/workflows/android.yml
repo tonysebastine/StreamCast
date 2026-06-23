@@ -7,6 +7,9 @@ on:
     branches: [ "main", "master" ]
   workflow_dispatch: # Allows manual trigger from GitHub UI
 
+permissions:
+  contents: write
+
 jobs:
   build:
     name: Build Android APK
@@ -54,3 +57,26 @@ jobs:
           name: UniversalCast-Debug-APK
           path: app/build/outputs/apk/debug/app-debug.apk
           retention-days: 14
+
+      - name: Rename APK for Release
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+        run: |
+          cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/UniversalCast-alpha-v${{ github.run_number }}.apk
+
+      - name: Create Alpha Release
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: alpha-v${{ github.run_number }}
+          name: Alpha Release v${{ github.run_number }}
+          body: |
+            Automatic alpha pre-release built from commit ${{ github.sha }}.
+            
+            ### Changes
+            - Build Run: #${{ github.run_number }}
+            - Ref: ${{ github.ref }}
+          draft: false
+          prerelease: true
+          files: app/build/outputs/apk/debug/UniversalCast-alpha-v${{ github.run_number }}.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

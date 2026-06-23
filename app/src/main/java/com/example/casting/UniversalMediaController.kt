@@ -387,6 +387,48 @@ class UniversalMediaController {
                             .build()
                         okHttpClient.newCall(request).execute().close()
                     }
+                    ProtocolType.FIRE_TV -> {
+                        // Standard DLNA soap action play/pause for Fire TV media renderer on standard port, or DIAL DELETE on Pause
+                        val port = if (device.port > 0 && device.port != 8008) device.port else 49152
+                        val endpoint = "http://${device.ipAddress}:$port/AVTransport/control"
+                        val action = if (nextState == CastingState.PLAYING) "Play" else "Pause"
+                        val soapAction = "\"urn:schemas-upnp-org:service:AVTransport:1#$action\""
+                        val soapBody = """
+                            <?xml version="1.0" encoding="utf-8"?>
+                            <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+                                <s:Body>
+                                    <u:$action xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
+                                        <InstanceID>0</InstanceID>
+                                        ${if (action == "Play") "<Speed>1</Speed>" else ""}
+                                    </u:$action>
+                                </s:Body>
+                            </s:Envelope>
+                        """.trimIndent()
+                        val request = Request.Builder()
+                            .url(endpoint)
+                            .post(soapBody.toRequestBody("text/xml; charset=\"utf-8\"".toMediaType()))
+                            .header("SOAPACTION", soapAction)
+                            .build()
+                        try {
+                            okHttpClient.newCall(request).execute().close()
+                        } catch (e: Exception) {
+                            // On failure, if we are trying to pause/stop, trigger DIAL DELETE as fallback
+                            if (action == "Pause") {
+                                val dialEndpoints = listOf(
+                                    "http://${device.ipAddress}:8008/apps/UniversalReceiverPlayer/run",
+                                    "http://${device.ipAddress}:8008/apps/SystemMediaRender/run"
+                                )
+                                for (dialEp in dialEndpoints) {
+                                    try {
+                                        val deleteReq = Request.Builder().url(dialEp).delete().build()
+                                        okHttpClient.newCall(deleteReq).execute().close()
+                                    } catch (ex: Exception) {
+                                        // Ignore individual endpoint failure
+                                    }
+                                }
+                            }
+                        }
+                    }
                     else -> {}
                 }
                 _state.value = nextState
@@ -495,6 +537,21 @@ class UniversalMediaController {
                                 .header("SOAPACTION", soapAction)
                                 .build()
                             okHttpClient.newCall(request).execute().close()
+                        }
+                        ProtocolType.FIRE_TV -> {
+                            // Stop casting by sending a DIAL DELETE request to the running application instances
+                            val dialEndpoints = listOf(
+                                "http://${device.ipAddress}:8008/apps/UniversalReceiverPlayer/run",
+                                "http://${device.ipAddress}:8008/apps/SystemMediaRender/run"
+                            )
+                            for (dialEp in dialEndpoints) {
+                                try {
+                                    val deleteReq = Request.Builder().url(dialEp).delete().build()
+                                    okHttpClient.newCall(deleteReq).execute().close()
+                                } catch (ex: Exception) {
+                                    // Ignore individual endpoint failure
+                                }
+                            }
                         }
                         else -> {}
                     }

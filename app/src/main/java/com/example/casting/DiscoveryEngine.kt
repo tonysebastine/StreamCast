@@ -83,7 +83,9 @@ class DiscoveryEngine(private val context: Context) {
             "_airplay._tcp",
             "_raop._tcp",
             "_roku-epc._tcp",
-            "_upnp-mediarenderer._tcp"
+            "_upnp-mediarenderer._tcp",
+            "_amzn-wplay._tcp",
+            "_dial._tcp"
         )
         for (service in mDnsServicesToScan) {
             startMdnsDiscovery(service)
@@ -229,6 +231,7 @@ class DiscoveryEngine(private val context: Context) {
             serviceType.contains("airplay", ignoreCase = true) || serviceType.contains("raop", ignoreCase = true) -> ProtocolType.AIRPLAY
             serviceType.contains("roku", ignoreCase = true) -> ProtocolType.ROKU
             serviceType.contains("upnp", ignoreCase = true) || serviceType.contains("dlna", ignoreCase = true) -> ProtocolType.DLNA
+            serviceType.contains("amzn", ignoreCase = true) || serviceType.contains("dial", ignoreCase = true) -> ProtocolType.FIRE_TV
             else -> ProtocolType.CHROMECAST
         }
 
@@ -241,6 +244,9 @@ class DiscoveryEngine(private val context: Context) {
             }
             ProtocolType.ROKU -> {
                 "Roku Caster Receiver ($host)"
+            }
+            ProtocolType.FIRE_TV -> {
+                "Amazon Fire TV ($host)"
             }
             ProtocolType.DLNA -> {
                 rawName.replace("_", " ").trim()
@@ -303,7 +309,31 @@ class DiscoveryEngine(private val context: Context) {
                 "ST: amzn.thin.pl\r\n" +
                 "USER-AGENT: Android/XCast\r\n\r\n"
 
-        val queries = listOf(queryRoku, queryFireTV, queryFireTVThin)
+        // Create M-SEARCH for DLNA MediaRenderer
+        val queryDlna = "M-SEARCH * HTTP/1.1\r\n" +
+                "HOST: 239.255.255.250:1900\r\n" +
+                "MAN: \"ssdp:discover\"\r\n" +
+                "MX: 3\r\n" +
+                "ST: urn:schemas-upnp-org:device:MediaRenderer:1\r\n" +
+                "USER-AGENT: Android/XCast\r\n\r\n"
+
+        // Create secondary M-SEARCH for DLNA AVTransport
+        val queryDlnaTransport = "M-SEARCH * HTTP/1.1\r\n" +
+                "HOST: 239.255.255.250:1900\r\n" +
+                "MAN: \"ssdp:discover\"\r\n" +
+                "MX: 3\r\n" +
+                "ST: urn:schemas-upnp-org:service:AVTransport:1\r\n" +
+                "USER-AGENT: Android/XCast\r\n\r\n"
+
+        // Create query for generic UPnP RootDevice
+        val queryRootDevice = "M-SEARCH * HTTP/1.1\r\n" +
+                "HOST: 239.255.255.250:1900\r\n" +
+                "MAN: \"ssdp:discover\"\r\n" +
+                "MX: 3\r\n" +
+                "ST: upnp:rootdevice\r\n" +
+                "USER-AGENT: Android/XCast\r\n\r\n"
+
+        val queries = listOf(queryRoku, queryFireTV, queryFireTVThin, queryDlna, queryDlnaTransport, queryRootDevice)
 
         try {
             DatagramSocket().use { socket ->
@@ -354,6 +384,7 @@ class DiscoveryEngine(private val context: Context) {
         val lines = response.split("\r\n", "\n")
         var isRoku = false
         var isFireTV = false
+        var isDlna = false
         var locationUrl: String? = null
         var friendlyName = "Unknown Lan Device"
 
@@ -365,8 +396,11 @@ class DiscoveryEngine(private val context: Context) {
             if (upperLine.contains("ROKU:ECP")) {
                 isRoku = true
             }
-            if (upperLine.contains("DIAL") || upperLine.contains("AMZN:THIN") || upperLine.contains("FIRETV")) {
+            if (upperLine.contains("DIAL") || upperLine.contains("AMZN:THIN") || upperLine.contains("FIRETV") || upperLine.contains("WPLAY")) {
                 isFireTV = true
+            }
+            if (upperLine.contains("MEDIARENDERER") || upperLine.contains("AVTRANSPORT") || upperLine.contains("UPNP")) {
+                isDlna = true
             }
         }
 
@@ -374,6 +408,7 @@ class DiscoveryEngine(private val context: Context) {
         val protocol = when {
             isRoku -> ProtocolType.ROKU
             isFireTV -> ProtocolType.FIRE_TV
+            isDlna -> ProtocolType.DLNA
             else -> {
                 // Heuristic inspection of typical ports / paths
                 if (locationUrl?.contains(":8060") == true) {
@@ -382,13 +417,28 @@ class DiscoveryEngine(private val context: Context) {
                 } else if (locationUrl?.contains(":8008") == true || locationUrl?.contains("dial") == true) {
                     isFireTV = true
                     ProtocolType.FIRE_TV
+                } else if (locationUrl?.contains("description.xml") == true || locationUrl?.contains("xml") == true || locationUrl?.contains(":49152") == true) {
+                    isDlna = true
+                    ProtocolType.DLNA
                 } else {
                     return // Unrecognized
                 }
             }
         }
 
-        val devicePort = when (protocol) {
+        var parsedPort: Int? = null
+        locationUrl?.let { url ->
+            try {
+                val uri = java.net.URI(url)
+                if (uri.port != -1) {
+                    parsedPort = uri.port
+                }
+            } catch (e: Exception) {
+                // Ignore
+            }
+        }
+
+        val devicePort = parsedPort ?: when (protocol) {
             ProtocolType.ROKU -> 8060
             ProtocolType.FIRE_TV -> 8008
             ProtocolType.CHROMECAST -> 8009
@@ -399,6 +449,7 @@ class DiscoveryEngine(private val context: Context) {
         friendlyName = when (protocol) {
             ProtocolType.ROKU -> "Roku Caster Receiver ($ip)"
             ProtocolType.FIRE_TV -> "Amazon Fire TV ($ip)"
+            ProtocolType.DLNA -> "DLNA Smart TV / Renderer ($ip)"
             else -> "LAN Cast Receiver ($ip)"
         }
 

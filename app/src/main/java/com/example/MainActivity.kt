@@ -133,34 +133,9 @@ fun UniversalCastDashboard(
     val isAnalyzing by viewModel.isAnalyzing.collectAsStateWithLifecycle()
     val diagnosticAnalysis by viewModel.diagnosticAnalysis.collectAsStateWithLifecycle()
 
-    // Add virtual/mock devices to the lists to allow user exploration when smart TVs are absent
-    val simulatedRokuDemo = remember {
-        CastingDevice(
-            id = "demo_roku_virtual",
-            name = "Living Room Roku TV (Demo)",
-            ipAddress = "192.168.1.42",
-            port = 8060,
-            protocolType = ProtocolType.ROKU,
-            location = "http://192.168.1.42:8060/"
-        )
-    }
-
-    val simulatedChromecastDemo = remember {
-        CastingDevice(
-            id = "demo_chromecast_virtual",
-            name = "All-Floor Chromecast (Demo)",
-            ipAddress = "192.168.1.88",
-            port = 8009,
-            protocolType = ProtocolType.CHROMECAST
-        )
-    }
-
     val allDevicesToShow = remember(discoveredDevices, manualDevices) {
         val merged = discoveredDevices.toMutableList()
         merged.addAll(manualDevices)
-        // inject simulated entries for rich local experience
-        if (merged.none { it.id == "demo_roku_virtual" }) merged.add(simulatedRokuDemo)
-        if (merged.none { it.id == "demo_chromecast_virtual" }) merged.add(simulatedChromecastDemo)
         merged
     }
 
