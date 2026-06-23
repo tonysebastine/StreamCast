@@ -27,13 +27,13 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Airplay
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Cast
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
@@ -766,7 +766,7 @@ fun UniversalCastDashboard(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Icon(
-                                        Icons.Default.List,
+                                        Icons.AutoMirrored.Filled.List,
                                         contentDescription = "stream log history",
                                         modifier = Modifier.size(16.dp),
                                         tint = MaterialTheme.colorScheme.outline
@@ -1355,7 +1355,7 @@ fun UniversalCastDashboard(
                                     }
 
                                     Spacer(modifier = Modifier.height(14.dp))
-                                    Divider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+                                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
                                     Spacer(modifier = Modifier.height(14.dp))
 
                                     // OFFLINE DIAGNOSTIC INTERACTIVE SECTION

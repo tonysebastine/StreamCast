@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
 import android.net.wifi.WifiManager
+import android.os.Build
 import android.util.Log
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -14,6 +15,7 @@ import java.net.DatagramSocket
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.Executor
 
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -200,7 +202,11 @@ class DiscoveryEngine(private val context: Context) {
             }
         }
         try {
-            nsdManager?.resolveService(serviceInfo, listener)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                nsdManager?.resolveService(serviceInfo, Executor { it.run() }, listener)
+            } else {
+                nsdManager?.resolveService(serviceInfo, listener)
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to call resolveService: ${e.message}")
             if (continuation.isActive) continuation.resume(null)
@@ -208,7 +214,12 @@ class DiscoveryEngine(private val context: Context) {
     }
 
     private fun processResolvedMdnsService(resolved: NsdServiceInfo) {
-        val host = resolved.host?.hostAddress ?: return
+        val host = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            resolved.hostAddresses.firstOrNull()?.hostAddress
+        } else {
+            @Suppress("DEPRECATION")
+            resolved.host?.hostAddress
+        } ?: return
         val port = resolved.port
         val rawName = resolved.serviceName
         val serviceType = resolved.serviceType ?: ""
