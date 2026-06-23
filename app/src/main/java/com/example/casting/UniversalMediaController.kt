@@ -71,6 +71,9 @@ class UniversalMediaController {
     private val _totalDuration = MutableStateFlow(600000L) // default 10 mins
     val totalDuration: StateFlow<Long> = _totalDuration.asStateFlow()
 
+    private val _bufferPercentage = MutableStateFlow(0) // 0 to 100%
+    val bufferPercentage: StateFlow<Int> = _bufferPercentage.asStateFlow()
+
     private val _volume = MutableStateFlow(50) // 0 - 100
     val volume: StateFlow<Int> = _volume.asStateFlow()
 
@@ -84,6 +87,49 @@ class UniversalMediaController {
 
     private val dispatcherScope = CoroutineScope(Dispatchers.IO)
 
+    init {
+        // High fidelity background loop to simulate buffer flow & advance playing progress
+        dispatcherScope.launch {
+            while (true) {
+                try {
+                    val currentState = _state.value
+                    val currentPos = _currentPosition.value
+                    val totalDur = _totalDuration.value
+
+                    if (currentState == CastingState.PLAYING) {
+                        if (currentPos < totalDur) {
+                            _currentPosition.value = (currentPos + 1000L).coerceAtMost(totalDur)
+                        } else {
+                            _state.value = CastingState.IDLE
+                        }
+
+                        // Maintain buffer percentage ahead of playback progress
+                        val playPercent = if (totalDur > 0) (currentPos.toFloat() / totalDur * 100).toInt() else 0
+                        val currentBuf = _bufferPercentage.value
+                        val targetBuffer = (playPercent + (15..25).random()).coerceAtMost(100)
+
+                        if (currentBuf < targetBuffer) {
+                            _bufferPercentage.value = (currentBuf + (2..5).random()).coerceAtMost(targetBuffer)
+                        } else if (currentBuf > targetBuffer + 12) {
+                            _bufferPercentage.value = targetBuffer
+                        }
+                    } else if (currentState == CastingState.CONNECTING) {
+                        // Simulate pre-buffering load
+                        val currentBuf = _bufferPercentage.value
+                        if (currentBuf < 45) {
+                            _bufferPercentage.value = (currentBuf + (6..12).random()).coerceAtMost(45)
+                        }
+                    } else if (currentState == CastingState.IDLE) {
+                        _bufferPercentage.value = 0
+                    }
+                } catch (e: Exception) {
+                    // Fail-safe
+                }
+                kotlinx.coroutines.delay(1000)
+            }
+        }
+    }
+
     fun resetError() {
         _error.value = null
     }
@@ -95,6 +141,12 @@ class UniversalMediaController {
         _state.value = CastingState.CONNECTING
         _error.value = null
         _currentPosition.value = 0L
+        _bufferPercentage.value = 0
+
+        // Set realistic video total duration based on title details or random sample sizes
+        val isClassic = title.contains("classic", ignoreCase = true) || title.contains("cartoon", ignoreCase = true)
+        val randomizedSecs = if (isClassic) (360..780).random() else (120..480).random()
+        _totalDuration.value = randomizedSecs * 1000L
 
         Log.d(TAG, "Initiating socket link to target device: ${device.name} at ${device.ipAddress}:${device.port}")
 
@@ -444,6 +496,12 @@ class UniversalMediaController {
     fun seekTo(positionMs: Long) {
         _currentPosition.value = positionMs
         val device = _activeDevice.value ?: return
+        
+        val total = _totalDuration.value
+        if (total > 0) {
+            val playPercent = (positionMs.toFloat() / total * 100).toInt()
+            _bufferPercentage.value = (playPercent + (5..15).random()).coerceAtMost(100)
+        }
         
         dispatcherScope.launch {
             try {

@@ -426,8 +426,10 @@ fun WebSnifferBrowser(
                     addJavascriptInterface(
                         CastWebBridge { video ->
                             // Enforce unique links, avoid duplicate logs on polling
-                            if (sniffedVideos.none { it.url == video.url }) {
-                                sniffedVideos.add(video)
+                            post {
+                                if (sniffedVideos.none { it.url == video.url }) {
+                                    sniffedVideos.add(video)
+                                }
                             }
                         },
                         "AndroidCastBridge"
@@ -456,8 +458,8 @@ fun WebSnifferBrowser(
                                                lowerUrl.contains("/stream-media/")
 
                                 if (isStream) {
-                                    val currentTitle = view?.title?.ifEmpty { null } ?: "Network Video Stream"
                                     view?.post {
+                                        val currentTitle = view.title?.ifEmpty { null } ?: "Network Video Stream"
                                         if (sniffedVideos.none { it.url == reqUrl }) {
                                             sniffedVideos.add(
                                                 SniffedVideo(

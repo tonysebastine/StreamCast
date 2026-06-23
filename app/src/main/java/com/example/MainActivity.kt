@@ -54,6 +54,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
@@ -112,6 +113,7 @@ fun UniversalCastDashboard(
     val castUrl by viewModel.mediaController.currentUrl.collectAsStateWithLifecycle()
     val castPosition by viewModel.mediaController.currentPosition.collectAsStateWithLifecycle()
     val castDuration by viewModel.mediaController.totalDuration.collectAsStateWithLifecycle()
+    val castBufferPercentage by viewModel.mediaController.bufferPercentage.collectAsStateWithLifecycle()
     val castVolume by viewModel.mediaController.volume.collectAsStateWithLifecycle()
     val activeError by viewModel.mediaController.error.collectAsStateWithLifecycle()
 
@@ -1062,30 +1064,24 @@ fun UniversalCastDashboard(
 
                                     Spacer(modifier = Modifier.height(24.dp))
 
-                                    // Timeline Seek Slider
-                                    Column(modifier = Modifier.fillMaxWidth()) {
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceBetween
-                                        ) {
-                                            Text(
-                                                text = formatDuration(castPosition),
-                                                fontSize = 11.sp,
-                                                color = MaterialTheme.colorScheme.outline
-                                            )
-                                            Text(
-                                                text = formatDuration(castDuration),
-                                                fontSize = 11.sp,
-                                                color = MaterialTheme.colorScheme.outline
-                                            )
-                                        }
-                                        Slider(
-                                            value = castPosition.toFloat(),
-                                            onValueChange = { viewModel.mediaController.seekTo(it.toLong()) },
-                                            valueRange = 0f..(castDuration.toFloat().coerceAtLeast(1f)),
-                                            modifier = Modifier.fillMaxWidth()
-                                        )
+                                    // Custom visual indicators for buffer status and playback progress
+                                    val activeBrandColor = when (activeCastDevice?.protocolType) {
+                                        ProtocolType.CHROMECAST -> Color(0xFF4285F4)
+                                        ProtocolType.ROKU -> Color(0xFF8A2BE2)
+                                        ProtocolType.FIRE_TV -> Color(0xFFFF9900)
+                                        ProtocolType.AIRPLAY -> Color(0xFF007AFF)
+                                        ProtocolType.DLNA -> Color(0xFF4CAF50)
+                                        null -> MaterialTheme.colorScheme.primary
                                     }
+
+                                    CastingBufferAndProgressIndicator(
+                                        position = castPosition,
+                                        duration = castDuration,
+                                        bufferPercentage = castBufferPercentage,
+                                        brandColor = activeBrandColor,
+                                        state = currentCastingState,
+                                        onSeek = { viewModel.mediaController.seekTo(it) }
+                                    )
 
                                     Spacer(modifier = Modifier.height(14.dp))
 
@@ -1482,6 +1478,7 @@ fun UniversalCastDashboard(
             title = castTitle,
             position = castPosition,
             duration = castDuration,
+            bufferPercentage = castBufferPercentage,
             volume = castVolume,
             onTogglePlayPause = { viewModel.mediaController.togglePlayPause() },
             onSeek = { pos -> viewModel.mediaController.seekTo(pos) },
@@ -1533,6 +1530,163 @@ fun formatDuration(ms: Long): String {
 }
 
 @Composable
+fun CastingBufferAndProgressIndicator(
+    position: Long,
+    duration: Long,
+    bufferPercentage: Int,
+    brandColor: Color,
+    state: CastingState,
+    onSeek: (Long) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val durationFloat = duration.toFloat().coerceAtLeast(1f)
+    val positionFloat = position.toFloat().coerceIn(0f, durationFloat)
+    val progressFraction = positionFloat / durationFloat
+    val bufferFraction = (bufferPercentage / 100f).coerceIn(0f, 1f)
+
+    // Pulse animation for buffer shimmer effect
+    val infiniteTransition = rememberInfiniteTransition(label = "buffer_shimmer")
+    val shimmerAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.40f,
+        targetValue = 0.85f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1500, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "shimmer_alpha"
+    )
+
+    Column(modifier = modifier.fillMaxWidth()) {
+        // Status metrics panel
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(6.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (state == CastingState.PLAYING) brandColor else Color.Gray
+                        )
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = when (state) {
+                        CastingState.CONNECTING -> "Handshaking & buffering..."
+                        CastingState.PLAYING -> "Streaming • Buffered $bufferPercentage%"
+                        CastingState.PAUSED -> "Paused • Buffered $bufferPercentage%"
+                        CastingState.ERROR -> "Streaming Connection Interrupted"
+                        else -> "Buffer Idle"
+                    },
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (state != CastingState.IDLE) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline
+                )
+            }
+
+            // Simulated real-time bits speed tracking
+            Text(
+                text = when (state) {
+                    CastingState.CONNECTING -> "1.8 MB/s"
+                    CastingState.PLAYING -> "${(10..24).random() / 10.0} MB/s • Live"
+                    CastingState.PAUSED -> "0.1 MB/s • Standby"
+                    CastingState.ERROR -> "0 KB/s"
+                    else -> "0 KB/s"
+                },
+                fontSize = 10.sp,
+                fontFamily = FontFamily.Monospace,
+                fontWeight = FontWeight.Medium,
+                color = brandColor.copy(alpha = 0.85f)
+            )
+        }
+
+        // Custom double-track progress bar
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(32.dp),
+            contentAlignment = Alignment.CenterStart
+        ) {
+            // Track base & buffer layer
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(6.dp)
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
+            ) {
+                // Buffer track
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(bufferFraction)
+                        .fillMaxHeight()
+                        .background(
+                            brush = Brush.horizontalGradient(
+                                colors = listOf(
+                                    brandColor.copy(alpha = 0.15f),
+                                    brandColor.copy(alpha = 0.45f * shimmerAlpha)
+                                )
+                            )
+                        )
+                )
+
+                // Active playback track
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(progressFraction)
+                        .fillMaxHeight()
+                        .background(
+                            brush = Brush.horizontalGradient(
+                                colors = listOf(
+                                    brandColor.copy(alpha = 0.85f),
+                                    brandColor
+                                )
+                            )
+                        )
+                )
+            }
+
+            // Transparent overlay Slider for smooth interactive gestures
+            Slider(
+                value = positionFloat,
+                onValueChange = { onSeek(it.toLong()) },
+                valueRange = 0f..durationFloat,
+                modifier = Modifier.fillMaxWidth().testTag("casting_seek_slider"),
+                colors = SliderDefaults.colors(
+                    thumbColor = brandColor,
+                    activeTrackColor = Color.Transparent,
+                    inactiveTrackColor = Color.Transparent,
+                    activeTickColor = Color.Transparent,
+                    inactiveTickColor = Color.Transparent
+                )
+            )
+        }
+
+        // Custom timer layout
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = formatDuration(position),
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                text = formatDuration(duration),
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
 fun IqooSmartIsland(
     isEnabled: Boolean,
     isExpanded: Boolean,
@@ -1542,6 +1696,7 @@ fun IqooSmartIsland(
     title: String,
     position: Long,
     duration: Long,
+    bufferPercentage: Int,
     volume: Int,
     onTogglePlayPause: () -> Unit,
     onSeek: (Long) -> Unit,
@@ -1686,7 +1841,12 @@ fun IqooSmartIsland(
 
                         Spacer(modifier = Modifier.height(14.dp))
 
-                        // Progress slider / Timeline
+                        // Progress slider / Timeline (Enhanced double-layer buffer bar)
+                        val durationFloat = duration.toFloat().coerceAtLeast(1f)
+                        val positionFloat = position.toFloat().coerceIn(0f, durationFloat)
+                        val progressFraction = positionFloat / durationFloat
+                        val bufferFraction = (bufferPercentage / 100f).coerceIn(0f, 1f)
+
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -1698,21 +1858,51 @@ fun IqooSmartIsland(
                                 color = Color.White.copy(alpha = 0.6f)
                             )
                             
-                            // Custom high-contrast slider
-                            Slider(
-                                value = position.toFloat(),
-                                onValueChange = { onSeek(it.toLong()) },
-                                valueRange = 0f..(duration.toFloat().coerceAtLeast(1f)),
+                            Box(
                                 modifier = Modifier
                                     .weight(1f)
-                                    .height(18.dp)
+                                    .height(24.dp)
                                     .padding(horizontal = 8.dp),
-                                colors = SliderDefaults.colors(
-                                    thumbColor = brandColor,
-                                    activeTrackColor = brandColor,
-                                    inactiveTrackColor = Color.White.copy(alpha = 0.15f)
+                                contentAlignment = Alignment.CenterStart
+                            ) {
+                                // Background base track
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(4.dp)
+                                        .clip(RoundedCornerShape(2.dp))
+                                        .background(Color.White.copy(alpha = 0.12f))
+                                ) {
+                                    // Buffer track
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth(bufferFraction)
+                                            .fillMaxHeight()
+                                            .background(brandColor.copy(alpha = 0.35f))
+                                    )
+                                    // Active playback track
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth(progressFraction)
+                                            .fillMaxHeight()
+                                            .background(brandColor)
+                                    )
+                                }
+
+                                Slider(
+                                    value = positionFloat,
+                                    onValueChange = { onSeek(it.toLong()) },
+                                    valueRange = 0f..durationFloat,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = SliderDefaults.colors(
+                                        thumbColor = brandColor,
+                                        activeTrackColor = Color.Transparent,
+                                        inactiveTrackColor = Color.Transparent,
+                                        activeTickColor = Color.Transparent,
+                                        inactiveTickColor = Color.Transparent
+                                    )
                                 )
-                            )
+                            }
 
                             Text(
                                 text = formatDuration(duration),
