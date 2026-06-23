@@ -1,0 +1,6 @@
+{
+  "name": "Universal Cast",
+  "description": "Universal media casting app with parallel network discovery (mDNS, SSDP), local HTTP server for responsive range-request playback, web stream sniffer, and AI support.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
