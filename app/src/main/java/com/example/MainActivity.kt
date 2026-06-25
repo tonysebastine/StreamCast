@@ -167,13 +167,13 @@ fun UniversalCastDashboard(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
                             imageVector = Icons.Default.Tv,
-                            contentDescription = "Universal Caster Logo",
+                            contentDescription = "StreamCast Logo",
                             tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(28.dp)
                         )
                         Spacer(modifier = Modifier.width(10.dp))
                         Text(
-                            text = "Universal Cast",
+                            text = "StreamCast",
                             style = MaterialTheme.typography.titleLarge.copy(
                                 fontWeight = FontWeight.ExtraBold,
                                 color = MaterialTheme.colorScheme.onSurface
@@ -436,106 +436,152 @@ fun UniversalCastDashboard(
                         }
 
                         // Devices list items
-                        items(allDevicesToShow) { device ->
-                            val isSelected = selectedCastingTarget?.id == device.id
-                            
-                            Card(
-                                shape = RoundedCornerShape(16.dp),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .border(
-                                        BorderStroke(
-                                            width = 1.dp,
-                                            color = if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.2f) else MaterialTheme.colorScheme.outline
-                                        ),
-                                        shape = RoundedCornerShape(16.dp)
-                                    )
-                                    .clickable {
-                                        selectedCastingTarget = device
-                                        Toast.makeText(context, "${device.name} selected as caster destination.", Toast.LENGTH_SHORT).show()
-                                    },
-                                colors = CardDefaults.cardColors(
-                                    containerColor = if (isSelected) 
-                                        MaterialTheme.colorScheme.tertiary 
-                                    else 
-                                        MaterialTheme.colorScheme.surfaceVariant
-                                ),
-                                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(14.dp),
-                                    verticalAlignment = Alignment.CenterVertically
+                        if (allDevicesToShow.isEmpty()) {
+                            item {
+                                Card(
+                                    shape = RoundedCornerShape(24.dp),
+                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)),
+                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
+                                    modifier = Modifier.fillMaxWidth()
                                 ) {
-                                    val brandColor = when (device.protocolType) {
-										ProtocolType.MIRACAST -> Color(0xFFE91E63)
-                                        ProtocolType.CHROMECAST -> Color(0xFF4285F4)
-                                        ProtocolType.ROKU -> Color(0xFF8A2BE2)
-                                        ProtocolType.FIRE_TV -> Color(0xFFFF9900)
-                                        ProtocolType.AIRPLAY -> Color(0xFF007AFF)
-                                        ProtocolType.DLNA -> Color(0xFF4CAF50)
-                                    }
-                                    
-                                    val brandLabel = when (device.protocolType) {
-                                        ProtocolType.CHROMECAST -> "Google Cast"
-                                        ProtocolType.ROKU -> "Roku EPC"
-                                        ProtocolType.FIRE_TV -> "Fire TV"
-                                        ProtocolType.AIRPLAY -> "Apple AirPlay"
-                                        ProtocolType.DLNA -> "DLNA Renderer"
-										ProtocolType.MIRACAST -> "Miracast (Wi-Fi Direct)"
-                                    }
-
-                                    Icon(
-                                        imageVector = when (device.protocolType) {
-											ProtocolType.MIRACAST -> Icons.Default.Cast
-                                            ProtocolType.CHROMECAST -> Icons.Default.Cast
-                                            ProtocolType.ROKU -> Icons.Default.Tv
-                                            ProtocolType.FIRE_TV -> Icons.Default.Tv
-                                            ProtocolType.AIRPLAY -> Icons.Default.Airplay
-                                            ProtocolType.DLNA -> Icons.Default.Router
-                                        },
-                                        contentDescription = "Receiver device emblem",
-                                        tint = if (isSelected) MaterialTheme.colorScheme.primary else brandColor,
-                                        modifier = Modifier.size(36.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(16.dp))
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = device.name,
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 14.sp
-                                        )
-                                        Spacer(modifier = Modifier.height(2.dp))
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    Column(
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.spacedBy(14.dp),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(24.dp)
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(60.dp)
+                                                .clip(CircleShape)
+                                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)),
+                                            contentAlignment = Alignment.Center
                                         ) {
-                                            Box(
-                                                modifier = Modifier
-                                                    .clip(RoundedCornerShape(6.dp))
-                                                    .background(brandColor.copy(alpha = 0.15f))
-                                                    .padding(horizontal = 6.dp, vertical = 2.dp)
-                                            ) {
-                                                Text(
-                                                    text = brandLabel,
-                                                    fontSize = 9.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = brandColor
-                                                )
-                                            }
-                                            Text(
-                                                text = "${device.ipAddress}:${device.port}",
-                                                fontSize = 11.sp,
-                                                color = MaterialTheme.colorScheme.outline
+                                            Icon(
+                                                imageVector = Icons.Default.Tv,
+                                                contentDescription = "Searching for Casting receivers",
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(32.dp)
                                             )
                                         }
-                                    }
-                                    if (isSelected) {
-                                        Icon(
-                                            Icons.Default.CheckCircle,
-                                            contentDescription = "Selected Caster target indicator",
-                                            tint = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.size(24.dp)
+                                        Text(
+                                            text = "Scanning Local Network...",
+                                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                            color = MaterialTheme.colorScheme.onSurface
                                         )
+                                        Text(
+                                            text = "Ensure your phone and Smart TV are connected to the same Wi-Fi subnet. Make sure DLNA, Chromecast, or AirPlay is enabled on your TV.",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.outline,
+                                            textAlign = TextAlign.Center,
+                                            modifier = Modifier.padding(horizontal = 12.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        } else {
+                            items(allDevicesToShow) { device ->
+                                val isSelected = selectedCastingTarget?.id == device.id
+                                
+                                Card(
+                                    shape = RoundedCornerShape(16.dp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .border(
+                                            BorderStroke(
+                                                width = 1.dp,
+                                                color = if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.2f) else MaterialTheme.colorScheme.outline
+                                            ),
+                                            shape = RoundedCornerShape(16.dp)
+                                        )
+                                        .clickable {
+                                            selectedCastingTarget = device
+                                            Toast.makeText(context, "${device.name} selected as caster destination.", Toast.LENGTH_SHORT).show()
+                                        },
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = if (isSelected) 
+                                            MaterialTheme.colorScheme.tertiary 
+                                        else 
+                                            MaterialTheme.colorScheme.surfaceVariant
+                                    ),
+                                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(14.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        val brandColor = when (device.protocolType) {
+                                            ProtocolType.MIRACAST -> Color(0xFFE91E63)
+                                            ProtocolType.CHROMECAST -> Color(0xFF4285F4)
+                                            ProtocolType.ROKU -> Color(0xFF8A2BE2)
+                                            ProtocolType.FIRE_TV -> Color(0xFFFF9900)
+                                            ProtocolType.AIRPLAY -> Color(0xFF007AFF)
+                                            ProtocolType.DLNA -> Color(0xFF4CAF50)
+                                        }
+                                        
+                                        val brandLabel = when (device.protocolType) {
+                                            ProtocolType.CHROMECAST -> "Google Cast"
+                                            ProtocolType.ROKU -> "Roku EPC"
+                                            ProtocolType.FIRE_TV -> "Fire TV"
+                                            ProtocolType.AIRPLAY -> "Apple AirPlay"
+                                            ProtocolType.DLNA -> "DLNA Renderer"
+                                            ProtocolType.MIRACAST -> "Miracast (Wi-Fi Direct)"
+                                        }
+
+                                        Icon(
+                                            imageVector = when (device.protocolType) {
+                                                ProtocolType.MIRACAST -> Icons.Default.Cast
+                                                ProtocolType.CHROMECAST -> Icons.Default.Cast
+                                                ProtocolType.ROKU -> Icons.Default.Tv
+                                                ProtocolType.FIRE_TV -> Icons.Default.Tv
+                                                ProtocolType.AIRPLAY -> Icons.Default.Airplay
+                                                ProtocolType.DLNA -> Icons.Default.Router
+                                            },
+                                            contentDescription = "Receiver device emblem",
+                                            tint = if (isSelected) MaterialTheme.colorScheme.primary else brandColor,
+                                            modifier = Modifier.size(36.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(16.dp))
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = device.name,
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 14.sp
+                                            )
+                                            Spacer(modifier = Modifier.height(2.dp))
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .clip(RoundedCornerShape(6.dp))
+                                                        .background(brandColor.copy(alpha = 0.15f))
+                                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                                ) {
+                                                    Text(
+                                                        text = brandLabel,
+                                                        fontSize = 9.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = brandColor
+                                                    )
+                                                }
+                                                Text(
+                                                    text = "${device.ipAddress}:${device.port}",
+                                                    fontSize = 11.sp,
+                                                    color = MaterialTheme.colorScheme.outline
+                                                )
+                                            }
+                                        }
+                                        if (isSelected) {
+                                            Icon(
+                                                Icons.Default.CheckCircle,
+                                                contentDescription = "Selected Caster target indicator",
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(24.dp)
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -682,49 +728,74 @@ fun UniversalCastDashboard(
                             // Section Picker: Local visual files
                             Card(
                                 shape = RoundedCornerShape(24.dp),
-                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                                modifier = Modifier.fillMaxWidth()
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        videoPickerLauncher.launch(
+                                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)
+                                        )
+                                    }
                             ) {
-                                Column(modifier = Modifier.padding(16.dp)) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        modifier = Modifier.fillMaxWidth()
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(20.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(56.dp)
+                                            .clip(CircleShape)
+                                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)),
+                                        contentAlignment = Alignment.Center
                                     ) {
                                         Icon(
-                                            Icons.Default.Storage,
-                                            contentDescription = "Media directory scanner folder",
+                                            imageVector = Icons.Default.Storage,
+                                            contentDescription = "Media storage picker",
                                             tint = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.size(28.dp)
+                                            modifier = Modifier.size(26.dp)
                                         )
-                                        Spacer(modifier = Modifier.width(12.dp))
-                                        Column {
-                                            Text(
-                                                "Cast Local Media Files",
-                                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                                    }
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Text(
+                                            text = "Cast Local Media Files",
+                                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        Text(
+                                            text = "Server-stream local files via Range-Request HTTP",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.outline,
+                                            textAlign = TextAlign.Center
+                                        )
+                                    }
+                                    
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f))
+                                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Search,
+                                                contentDescription = "Search icon",
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(16.dp)
                                             )
                                             Text(
-                                                "Server stream via range-request HTTP",
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                                text = "Pick Video from Phone Gallery",
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.primary
                                             )
                                         }
-                                    }
-
-                                    Spacer(modifier = Modifier.height(12.dp))
-
-                                    Button(
-                                        onClick = {
-                                            videoPickerLauncher.launch(
-                                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)
-                                            )
-                                        },
-                                        shape = RoundedCornerShape(12.dp),
-                                        modifier = Modifier.fillMaxWidth()
-                                    ) {
-                                        Icon(Icons.Default.Search, contentDescription = "Open file manager")
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text("Pick Video from Phone Gallery")
                                     }
 
                                     if (selectedLocalMediaUri != null) {

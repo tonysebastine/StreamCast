@@ -1,6 +1,6 @@
-# Universal Cast & Stream
+# StreamCast
 
-Universal Cast & Stream is a high-performance, responsive Android media casting application built completely with modern **Jetpack Compose**, **Kotlin Coroutines/Flow**, and **Room Database**. It enables seamless local media sharing and web stream sniffing directly to smart TVs and casting receivers.
+StreamCast is a high-performance, responsive Android media casting application built completely with modern **Jetpack Compose**, **Kotlin Coroutines/Flow**, and **Room Database**. It enables seamless local media sharing and web stream sniffing directly to smart TVs and casting receivers.
 
 The application utilizes a dark Cosmic Slate visual design theme characterized by rich contrast, generous negative space, and intuitive typography pairings to create a highly readable experience across phone, tablet, and foldable devices.
 
