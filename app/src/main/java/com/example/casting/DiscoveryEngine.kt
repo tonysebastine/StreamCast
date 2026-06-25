@@ -26,7 +26,8 @@ enum class ProtocolType {
     ROKU,
     FIRE_TV,
     AIRPLAY,
-    DLNA
+    DLNA,
+    MIRACAST
 }
 
 data class CastingDevice(
@@ -227,6 +228,7 @@ class DiscoveryEngine(private val context: Context) {
         val serviceType = resolved.serviceType ?: ""
 
         val protocolType = when {
+            rawName.contains("anycast", ignoreCase = true) || rawName.contains("ezcast", ignoreCase = true) || serviceType.contains("anycast", ignoreCase = true) || rawName.contains("miracast", ignoreCase = true) -> ProtocolType.MIRACAST
             serviceType.contains("googlecast", ignoreCase = true) -> ProtocolType.CHROMECAST
             serviceType.contains("airplay", ignoreCase = true) || serviceType.contains("raop", ignoreCase = true) -> ProtocolType.AIRPLAY
             serviceType.contains("roku", ignoreCase = true) -> ProtocolType.ROKU
@@ -236,6 +238,9 @@ class DiscoveryEngine(private val context: Context) {
         }
 
         val friendlyName = when (protocolType) {
+            ProtocolType.MIRACAST -> {
+                "Miracast DLNA Receiver ($host)"
+            }
             ProtocolType.CHROMECAST -> {
                 getTxtRecord(resolved, "fn") ?: rawName.substringBefore(".tcp").replace("_", " ").trim()
             }
@@ -385,6 +390,7 @@ class DiscoveryEngine(private val context: Context) {
         var isRoku = false
         var isFireTV = false
         var isDlna = false
+        var isMiracast = false
         var locationUrl: String? = null
         var friendlyName = "Unknown Lan Device"
 
@@ -402,16 +408,23 @@ class DiscoveryEngine(private val context: Context) {
             if (upperLine.contains("MEDIARENDERER") || upperLine.contains("AVTRANSPORT") || upperLine.contains("UPNP")) {
                 isDlna = true
             }
+            if (upperLine.contains("ANYCAST") || upperLine.contains("EZCAST") || upperLine.contains("MIRACAST")) {
+                isMiracast = true
+            }
         }
 
         // Standard heuristics for SSDP devices
         val protocol = when {
+            isMiracast -> ProtocolType.MIRACAST
             isRoku -> ProtocolType.ROKU
             isFireTV -> ProtocolType.FIRE_TV
             isDlna -> ProtocolType.DLNA
             else -> {
                 // Heuristic inspection of typical ports / paths
-                if (locationUrl?.contains(":8060") == true) {
+                if (locationUrl?.contains("anycast", ignoreCase = true) == true || locationUrl?.contains("ezcast", ignoreCase = true) == true || locationUrl?.contains("miracast", ignoreCase = true) == true) {
+                    isMiracast = true
+                    ProtocolType.MIRACAST
+                } else if (locationUrl?.contains(":8060") == true) {
                     isRoku = true
                     ProtocolType.ROKU
                 } else if (locationUrl?.contains(":8008") == true || locationUrl?.contains("dial") == true) {
@@ -444,9 +457,11 @@ class DiscoveryEngine(private val context: Context) {
             ProtocolType.CHROMECAST -> 8009
             ProtocolType.AIRPLAY -> 7000
             ProtocolType.DLNA -> 49152
+            ProtocolType.MIRACAST -> 49152
         }
 
         friendlyName = when (protocol) {
+            ProtocolType.MIRACAST -> "Miracast Screen Adapter ($ip)"
             ProtocolType.ROKU -> "Roku Caster Receiver ($ip)"
             ProtocolType.FIRE_TV -> "Amazon Fire TV ($ip)"
             ProtocolType.DLNA -> "DLNA Smart TV / Renderer ($ip)"

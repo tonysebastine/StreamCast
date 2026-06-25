@@ -159,6 +159,7 @@ class UniversalMediaController {
                     ProtocolType.CHROMECAST -> castToChromecast(device, mediaUrl, title)
                     ProtocolType.AIRPLAY -> castToAirPlay(device, mediaUrl)
                     ProtocolType.DLNA -> castToDlna(device, mediaUrl, title)
+                    ProtocolType.MIRACAST -> castToDlna(device, mediaUrl, title)
                 }
             } catch (e: Exception) {
                 mapAndReportError(e, device, mediaUrl)
@@ -417,7 +418,7 @@ class UniversalMediaController {
                         val request = Request.Builder().url(endpoint).post("".toRequestBody()).build()
                         okHttpClient.newCall(request).execute().close()
                     }
-                    ProtocolType.DLNA -> {
+                    ProtocolType.DLNA, ProtocolType.MIRACAST -> {
                         val endpoint = "http://${device.ipAddress}:${device.port}/AVTransport/control"
                         val action = if (nextState == CastingState.PLAYING) "Play" else "Pause"
                         val soapAction = "\"urn:schemas-upnp-org:service:AVTransport:1#$action\""
@@ -493,6 +494,14 @@ class UniversalMediaController {
         }
     }
 
+    private fun formatMsToHms(ms: Long): String {
+        val totalSecs = ms / 1000
+        val hours = totalSecs / 3600
+        val minutes = (totalSecs % 3600) / 60
+        val seconds = totalSecs % 60
+        return String.format("%02d:%02d:%02d", hours, minutes, seconds)
+    }
+
     fun seekTo(positionMs: Long) {
         _currentPosition.value = positionMs
         val device = _activeDevice.value ?: return
@@ -517,6 +526,28 @@ class UniversalMediaController {
                     val seconds = positionMs.toFloat() / 1000f
                     val endpoint = "http://${device.ipAddress}:7000/scrub?position=$seconds"
                     val request = Request.Builder().url(endpoint).post("".toRequestBody()).build()
+                    okHttpClient.newCall(request).execute().close()
+                } else if (device.protocolType == ProtocolType.DLNA || device.protocolType == ProtocolType.MIRACAST) {
+                    val timeStr = formatMsToHms(positionMs)
+                    val endpoint = "http://${device.ipAddress}:${device.port}/AVTransport/control"
+                    val soapAction = "\"urn:schemas-upnp-org:service:AVTransport:1#Seek\""
+                    val soapBody = """
+                        <?xml version="1.0" encoding="utf-8"?>
+                        <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+                            <s:Body>
+                                <u:Seek xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
+                                    <InstanceID>0</InstanceID>
+                                    <Unit>REL_TIME</Unit>
+                                    <Target>$timeStr</Target>
+                                </u:Seek>
+                            </s:Body>
+                        </s:Envelope>
+                    """.trimIndent()
+                    val request = Request.Builder()
+                        .url(endpoint)
+                        .post(soapBody.toRequestBody("text/xml; charset=\"utf-8\"".toMediaType()))
+                        .header("SOAPACTION", soapAction)
+                        .build()
                     okHttpClient.newCall(request).execute().close()
                 }
                 Log.d(TAG, "Seeked caster position to $positionMs ms")
@@ -544,6 +575,27 @@ class UniversalMediaController {
                     val volumeFactor = clamped.toFloat() / 100f
                     val endpoint = "http://${device.ipAddress}:7000/volume?value=$volumeFactor"
                     val request = Request.Builder().url(endpoint).post("".toRequestBody()).build()
+                    okHttpClient.newCall(request).execute().close()
+                } else if (device.protocolType == ProtocolType.DLNA || device.protocolType == ProtocolType.MIRACAST) {
+                    val endpoint = "http://${device.ipAddress}:${device.port}/RenderingControl/control"
+                    val soapAction = "\"urn:schemas-upnp-org:service:RenderingControl:1#SetVolume\""
+                    val soapBody = """
+                        <?xml version="1.0" encoding="utf-8"?>
+                        <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+                            <s:Body>
+                                <u:SetVolume xmlns:u="urn:schemas-upnp-org:service:RenderingControl:1">
+                                    <InstanceID>0</InstanceID>
+                                    <Channel>Master</Channel>
+                                    <DesiredVolume>$clamped</DesiredVolume>
+                                </u:SetVolume>
+                            </s:Body>
+                        </s:Envelope>
+                    """.trimIndent()
+                    val request = Request.Builder()
+                        .url(endpoint)
+                        .post(soapBody.toRequestBody("text/xml; charset=\"utf-8\"".toMediaType()))
+                        .header("SOAPACTION", soapAction)
+                        .build()
                     okHttpClient.newCall(request).execute().close()
                 }
                 Log.d(TAG, "Volume modified to $clamped")
@@ -576,7 +628,7 @@ class UniversalMediaController {
                             val request = Request.Builder().url(endpoint).post("".toRequestBody()).build()
                             okHttpClient.newCall(request).execute().close()
                         }
-                        ProtocolType.DLNA -> {
+                        ProtocolType.DLNA, ProtocolType.MIRACAST -> {
                             val endpoint = "http://${device.ipAddress}:${device.port}/AVTransport/control"
                             val soapAction = "\"urn:schemas-upnp-org:service:AVTransport:1#Stop\""
                             val soapBody = """

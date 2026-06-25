@@ -372,6 +372,61 @@ fun UniversalCastDashboard(
                         }
 
                         item {
+                            Card(
+                                shape = RoundedCornerShape(16.dp),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.primaryContainer
+                                ),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        try {
+                                            val intent = android.content.Intent("android.settings.WIFI_DISPLAY_SETTINGS")
+                                            intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                                            context.startActivity(intent)
+                                        } catch (e: Exception) {
+                                            try {
+                                                val intent = android.content.Intent(android.provider.Settings.ACTION_CAST_SETTINGS)
+                                                intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                                                context.startActivity(intent)
+                                            } catch (ex: Exception) {
+                                                Toast.makeText(context, "Search for 'Cast' or 'Wireless Display' in phone settings.", Toast.LENGTH_LONG).show()
+                                            }
+                                        }
+                                    },
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f))
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(14.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Cast,
+                                        contentDescription = "Miracast screen mirroring",
+                                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                        modifier = Modifier.size(32.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(16.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "Miracast / Wi-Fi Display Screen Mirroring",
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 14.sp,
+                                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                                        )
+                                        Text(
+                                            text = "Tap to open system cast screen settings to stream audio & video using Wi-Fi Alliance standard (uses Wi-Fi Direct peer-to-peer connection).",
+                                            fontSize = 11.sp,
+                                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                                        )
+                                    }
+                                }
+                            }
+                            
+                            Spacer(modifier = Modifier.height(16.dp))
+                        }
+
+                        item {
                             // Section Header: Devices
                             Text(
                                 text = "Discovered Receivers (${allDevicesToShow.size})",
@@ -412,6 +467,7 @@ fun UniversalCastDashboard(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     val brandColor = when (device.protocolType) {
+										ProtocolType.MIRACAST -> Color(0xFFE91E63)
                                         ProtocolType.CHROMECAST -> Color(0xFF4285F4)
                                         ProtocolType.ROKU -> Color(0xFF8A2BE2)
                                         ProtocolType.FIRE_TV -> Color(0xFFFF9900)
@@ -425,10 +481,12 @@ fun UniversalCastDashboard(
                                         ProtocolType.FIRE_TV -> "Fire TV"
                                         ProtocolType.AIRPLAY -> "Apple AirPlay"
                                         ProtocolType.DLNA -> "DLNA Renderer"
+										ProtocolType.MIRACAST -> "Miracast (Wi-Fi Direct)"
                                     }
 
                                     Icon(
                                         imageVector = when (device.protocolType) {
+											ProtocolType.MIRACAST -> Icons.Default.Cast
                                             ProtocolType.CHROMECAST -> Icons.Default.Cast
                                             ProtocolType.ROKU -> Icons.Default.Tv
                                             ProtocolType.FIRE_TV -> Icons.Default.Tv
@@ -1066,6 +1124,7 @@ fun UniversalCastDashboard(
 
                                     // Custom visual indicators for buffer status and playback progress
                                     val activeBrandColor = when (activeCastDevice?.protocolType) {
+										ProtocolType.MIRACAST -> Color(0xFFE91E63)
                                         ProtocolType.CHROMECAST -> Color(0xFF4285F4)
                                         ProtocolType.ROKU -> Color(0xFF8A2BE2)
                                         ProtocolType.FIRE_TV -> Color(0xFFFF9900)
@@ -1708,6 +1767,7 @@ fun IqooSmartIsland(
     if (!isEnabled) return
 
     val brandColor = when (device?.protocolType) {
+		ProtocolType.MIRACAST -> Color(0xFFE91E63)
         ProtocolType.CHROMECAST -> Color(0xFF4285F4)
         ProtocolType.ROKU -> Color(0xFF8A2BE2)
         ProtocolType.FIRE_TV -> Color(0xFFFF9900)
@@ -1787,6 +1847,7 @@ fun IqooSmartIsland(
                                         ProtocolType.CHROMECAST -> Icons.Default.Cast
                                         ProtocolType.AIRPLAY -> Icons.Default.Airplay
                                         ProtocolType.DLNA -> Icons.Default.Router
+                                        ProtocolType.MIRACAST -> Icons.Default.Cast
                                         else -> Icons.Default.Tv
                                     },
                                     contentDescription = "Active target icon",
@@ -2061,6 +2122,7 @@ fun IqooSmartIsland(
                                     ProtocolType.CHROMECAST -> Icons.Default.Cast
                                     ProtocolType.AIRPLAY -> Icons.Default.Airplay
                                     ProtocolType.DLNA -> Icons.Default.Router
+                                    ProtocolType.MIRACAST -> Icons.Default.Cast
                                     else -> Icons.Default.Tv
                                 },
                                 contentDescription = null,

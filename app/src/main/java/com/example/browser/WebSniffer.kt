@@ -110,8 +110,11 @@ fun WebSnifferBrowser(
                 if (detectedUrls.has(absoluteUrl)) return;
 
                 // Match typical targets like mp4, mkv, HLS m3u8 playlists or general static video paths
-                const isMedia = absoluteUrl.match(/\.(mp4|mkv|m3u8|webm|ogv|mp3|ogg)(\?|$)/i) ||
+                const isMedia = absoluteUrl.match(/\.(mp4|mkv|m3u8|webm|ogv|mp3|ogg|ircast|iracst|anycast)(\?|$)/i) ||
                                 absoluteUrl.includes('.m3u8') ||
+                                absoluteUrl.includes('.ircast') ||
+                                absoluteUrl.includes('.iracst') ||
+                                absoluteUrl.includes('.anycast') ||
                                 absoluteUrl.includes('googlevideo.com/videoplayback') ||
                                 absoluteUrl.includes('manifest.m3u8') ||
                                 absoluteUrl.includes('master.m3u8');
@@ -454,6 +457,9 @@ fun WebSnifferBrowser(
                                                lowerUrl.contains(".mpd") || 
                                                lowerUrl.contains(".webm") || 
                                                lowerUrl.contains(".mkv") || 
+                                               lowerUrl.contains(".ircast") || 
+                                               lowerUrl.contains(".iracst") || 
+                                               lowerUrl.contains(".anycast") || 
                                                lowerUrl.contains("googlevideo.com/videoplayback") ||
                                                lowerUrl.contains("/stream-media/")
 
@@ -509,6 +515,9 @@ private fun getFormatLabel(url: String): String {
     val lower = url.lowercase()
     return when {
         lower.contains(".m3u8") -> "HLS .m3u8"
+        lower.contains(".ircast") -> "IRCast .ircast"
+        lower.contains(".iracst") -> "IRCast .iracst"
+        lower.contains(".anycast") -> "AnyCast Stream"
         lower.contains(".mp4") -> "MP4"
         lower.contains(".mpd") -> "DASH .mpd"
         lower.contains(".webm") -> "WebM"
