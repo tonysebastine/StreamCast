@@ -52,6 +52,7 @@ class DiscoveryEngine(private val context: Context) {
     private val resolveMutex = Mutex()
     
     private var discoveryScope: CoroutineScope? = null
+    private var updateJob: Job? = null
     private var multicastLock: WifiManager.MulticastLock? = null
 
     init {
@@ -120,6 +121,8 @@ class DiscoveryEngine(private val context: Context) {
         activeListeners.clear()
         
         // Stop background coroutines
+        updateJob?.cancel()
+        updateJob = null
         discoveryScope?.cancel()
         discoveryScope = null
 
@@ -485,8 +488,12 @@ class DiscoveryEngine(private val context: Context) {
         activeDevicesMap[device.id] = device
         updateDevicesFlow()
     }
-
     private fun updateDevicesFlow() {
-        _devices.value = activeDevicesMap.values.toList().sortedBy { it.name }
+        updateJob?.cancel()
+        updateJob = discoveryScope?.launch {
+            delay(500)
+            val sortedList = activeDevicesMap.values.toList().sortedBy { it.name }
+            _devices.value = sortedList
+        }
     }
 }
