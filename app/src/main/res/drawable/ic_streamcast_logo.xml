@@ -1,22 +1,22 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:aapt="http://schemas.android.com/aapt"
-    android:width="108dp"
-    android:height="108dp"
-    android:viewportWidth="108"
-    android:viewportHeight="108">
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
     
     <!-- Outer TV/Casting Monitor Frame with a beautiful glowing gradient -->
     <path
-        android:pathData="M 32,38 C 32,34.7 34.7,32 38,32 L 70,32 C 73.3,32 76,34.7 76,38 L 76,64 C 76,67.3 73.3,70 70,70 L 38,70 C 34.7,70 32,67.3 32,64 Z"
-        android:strokeWidth="3.5"
+        android:pathData="M 4,6 C 4,4.9 4.9,4 6,4 L 18,4 C 19.1,4 20,4.9 20,6 L 20,14 C 20,15.1 19.1,16 18,16 L 6,16 C 4.9,16 4,15.1 4,14 Z"
+        android:strokeWidth="1.8"
         android:strokeLineCap="round"
         android:strokeLineJoin="round">
         <aapt:attr name="android:strokeColor">
             <gradient
-                android:startX="32"
-                android:startY="32"
-                android:endX="76"
-                android:endY="70"
+                android:startX="4"
+                android:startY="4"
+                android:endX="20"
+                android:endY="16"
                 android:type="linear">
                 <item android:offset="0.0" android:color="#E0C3FC" />
                 <item android:offset="1.0" android:color="#8EC5FC" />
@@ -26,16 +26,16 @@
 
     <!-- TV Stand -->
     <path
-        android:pathData="M 46,70 L 42,76 L 66,76 L 62,70"
-        android:strokeWidth="3"
+        android:pathData="M 10,16 L 8,19 L 16,19 L 14,16"
+        android:strokeWidth="1.5"
         android:strokeLineCap="round"
         android:strokeLineJoin="round">
         <aapt:attr name="android:strokeColor">
             <gradient
-                android:startX="42"
-                android:startY="70"
-                android:endX="66"
-                android:endY="76"
+                android:startX="8"
+                android:startY="16"
+                android:endX="16"
+                android:endY="19"
                 android:type="linear">
                 <item android:offset="0.0" android:color="#E0C3FC" />
                 <item android:offset="1.0" android:color="#8EC5FC" />
@@ -45,15 +45,15 @@
 
     <!-- Centered Play Icon inside the monitor -->
     <path
-        android:pathData="M 50,44 L 62,51 L 50,58 Z"
-        android:strokeWidth="1"
+        android:pathData="M 10.5,8 L 14.5,10 L 10.5,12 Z"
+        android:strokeWidth="0.5"
         android:strokeLineJoin="round">
         <aapt:attr name="android:fillColor">
             <gradient
-                android:startX="50"
-                android:startY="44"
-                android:endX="62"
-                android:endY="58"
+                android:startX="10"
+                android:startY="8"
+                android:endX="15"
+                android:endY="12"
                 android:type="linear">
                 <item android:offset="0.0" android:color="#D0BCFF" />
                 <item android:offset="1.0" android:color="#381E72" />
@@ -64,20 +64,20 @@
     <!-- Glowing Chromecast-style casting waves (bottom-left) -->
     <!-- Wave 1 -->
     <path
-        android:pathData="M 36,66 A 4,4 0 0,1 36,62"
-        android:strokeWidth="2.5"
+        android:pathData="M 6,14 A 1,1 0 0,1 6,12.5"
+        android:strokeWidth="1.2"
         android:strokeLineCap="round"
         android:strokeColor="#FFFFFF" />
     <!-- Wave 2 -->
     <path
-        android:pathData="M 36,66 A 9,9 0 0,1 36,57"
-        android:strokeWidth="2.5"
+        android:pathData="M 6,14 A 2.5,2.5 0 0,1 6,11"
+        android:strokeWidth="1.2"
         android:strokeLineCap="round"
         android:strokeColor="#8EC5FC" />
     <!-- Wave 3 -->
     <path
-        android:pathData="M 36,66 A 14,14 0 0,1 36,52"
-        android:strokeWidth="2.5"
+        android:pathData="M 6,14 A 4,4 0 0,1 6,9"
+        android:strokeWidth="1.2"
         android:strokeLineCap="round"
         android:strokeColor="#E0C3FC" />
 

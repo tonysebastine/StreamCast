@@ -29,7 +29,7 @@ private val DarkColorScheme =
 private val LightColorScheme = DarkColorScheme
 
 @Composable
-fun MyApplicationTheme(
+fun StreamCastTheme(
   darkTheme: Boolean = true,
   dynamicColor: Boolean = false,
   content: @Composable () -> Unit,

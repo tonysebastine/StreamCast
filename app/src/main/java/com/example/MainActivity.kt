@@ -44,6 +44,13 @@ import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Support
 import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material.icons.filled.Wifi
+import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material.icons.filled.Email
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -61,6 +68,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.painterResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -71,19 +79,19 @@ import com.example.casting.CastingState
 import com.example.casting.ProtocolType
 import com.example.database.BookmarkedUrl
 import com.example.database.CastHistoryItem
-import com.example.ui.theme.MyApplicationTheme
+import com.example.ui.theme.StreamCastTheme
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            MyApplicationTheme {
+            StreamCastTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    UniversalCastDashboard()
+                    StreamCastDashboard()
                 }
             }
         }
@@ -92,7 +100,7 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun UniversalCastDashboard(
+fun StreamCastDashboard(
     viewModel: CastViewModel = viewModel()
 ) {
     val context = LocalContext.current
@@ -100,6 +108,7 @@ fun UniversalCastDashboard(
     var selectedTab by remember { mutableIntStateOf(0) }
     var isSmartIslandEnabled by remember { mutableStateOf(true) }
     var isSmartIslandExpanded by remember { mutableStateOf(false) }
+    var expandedReleaseVersion by remember { mutableStateOf("1.2") }
 
     // Bind VM outputs
     val isDiscovering by viewModel.isDiscovering.collectAsStateWithLifecycle()
@@ -166,10 +175,10 @@ fun UniversalCastDashboard(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
-                            imageVector = Icons.Default.Tv,
+                            painter = painterResource(id = R.drawable.ic_streamcast_logo),
                             contentDescription = "StreamCast Logo",
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(28.dp)
+                            tint = Color.Unspecified,
+                            modifier = Modifier.size(30.dp)
                         )
                         Spacer(modifier = Modifier.width(10.dp))
                         Text(
@@ -1593,6 +1602,457 @@ fun UniversalCastDashboard(
                                 }
                             }
                         }
+
+                        item {
+                            // Section: Developer Info Card
+                            Card(
+                                shape = RoundedCornerShape(20.dp),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                ),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("developer_info_card")
+                            ) {
+                                Column(modifier = Modifier.padding(16.dp)) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(44.dp)
+                                                .clip(CircleShape)
+                                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.AccountCircle,
+                                                contentDescription = "Developer avatar emblem",
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(28.dp)
+                                            )
+                                        }
+
+                                        Spacer(modifier = Modifier.width(12.dp))
+
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = "Tony Sebastine",
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 15.sp,
+                                                color = MaterialTheme.colorScheme.onBackground
+                                            )
+                                            Text(
+                                                text = "Lead Architect & Developer",
+                                                fontSize = 11.sp,
+                                                color = MaterialTheme.colorScheme.outline
+                                            )
+                                        }
+
+                                        // Small build chip
+                                        Surface(
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
+                                            modifier = Modifier.padding(start = 4.dp)
+                                        ) {
+                                            Text(
+                                                text = "v1.2",
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                            )
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(14.dp))
+                                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
+                                    Spacer(modifier = Modifier.height(12.dp))
+
+                                    // Description / Bio
+                                    Text(
+                                        text = "StreamCast was built to provide parallel network discovery (mDNS, SSDP), an ultra-responsive local range-request server, and a reliable web stream sniffer to unify casting across Chromecasts, Fire TVs, Rokus, and AirPlay devices.",
+                                        fontSize = 12.sp,
+                                        lineHeight = 17.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+
+                                    Spacer(modifier = Modifier.height(14.dp))
+
+                                    // Contact & Email section
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.8f))
+                                            .padding(10.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Email,
+                                            contentDescription = "Email icon",
+                                            tint = MaterialTheme.colorScheme.secondary,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            text = "tonysebastine@gmail.com",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            color = MaterialTheme.colorScheme.onSurface,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                        
+                                        // Copy action button
+                                        IconButton(
+                                            onClick = {
+                                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                                val clip = android.content.ClipData.newPlainText("Developer Email", "tonysebastine@gmail.com")
+                                                clipboard.setPrimaryClip(clip)
+                                                Toast.makeText(context, "Developer email copied to clipboard!", Toast.LENGTH_SHORT).show()
+                                            },
+                                            modifier = Modifier
+                                                .size(28.dp)
+                                                .testTag("developer_email_copy_button")
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.ContentCopy,
+                                                contentDescription = "Copy developer email",
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(14.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        item {
+                            Spacer(modifier = Modifier.height(16.dp))
+                            
+                            // Section: Release Changelog Card
+                            Card(
+                                shape = RoundedCornerShape(20.dp),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                ),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("release_changelog_card")
+                            ) {
+                                Column(modifier = Modifier.padding(16.dp)) {
+                                    // Header
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(36.dp)
+                                                .clip(CircleShape)
+                                                .background(MaterialTheme.colorScheme.secondary.copy(alpha = 0.15f)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.History,
+                                                contentDescription = "Release history icon",
+                                                tint = MaterialTheme.colorScheme.secondary,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.width(12.dp))
+                                        Column {
+                                            Text(
+                                                text = "Release Changelog",
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 15.sp,
+                                                color = MaterialTheme.colorScheme.onBackground
+                                            )
+                                            Text(
+                                                text = "Explore historical updates & new features",
+                                                fontSize = 11.sp,
+                                                color = MaterialTheme.colorScheme.outline
+                                            )
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(16.dp))
+                                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
+                                    Spacer(modifier = Modifier.height(12.dp))
+
+                                    // Version 1.2 Item (Current Production Release)
+                                    val isV12Expanded = expandedReleaseVersion == "1.2"
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .clickable { 
+                                                expandedReleaseVersion = if (isV12Expanded) "" else "1.2"
+                                            }
+                                            .background(
+                                                if (isV12Expanded) MaterialTheme.colorScheme.surface.copy(alpha = 0.5f)
+                                                else Color.Transparent
+                                            )
+                                            .padding(10.dp)
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Text(
+                                                text = "v1.2",
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 14.sp,
+                                                color = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.width(44.dp)
+                                            )
+                                            
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    text = "Production Stable Build",
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    fontSize = 12.sp,
+                                                    color = MaterialTheme.colorScheme.onSurface
+                                                )
+                                                Text(
+                                                    text = "Released: June 2026",
+                                                    fontSize = 10.sp,
+                                                    color = MaterialTheme.colorScheme.outline
+                                                )
+                                            }
+
+                                            // Production Latest Badge
+                                            Surface(
+                                                shape = RoundedCornerShape(6.dp),
+                                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+                                                modifier = Modifier.padding(horizontal = 4.dp)
+                                            ) {
+                                                Text(
+                                                    text = "LATEST PROD",
+                                                    fontSize = 8.sp,
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    color = MaterialTheme.colorScheme.primary,
+                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                )
+                                            }
+
+                                            Icon(
+                                                imageVector = if (isV12Expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                                                contentDescription = if (isV12Expanded) "Collapse" else "Expand",
+                                                tint = MaterialTheme.colorScheme.outline,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        }
+
+                                        if (isV12Expanded) {
+                                            Spacer(modifier = Modifier.height(10.dp))
+                                            Column(modifier = Modifier.padding(start = 12.dp)) {
+                                                ChangelogBullet("Production Optimization", "Stabilized network discovery layers and HTTP local streaming servers to ensure maximum reliability and lower battery impact.")
+                                                ChangelogBullet("Direct Release Tracking", "Integrated high-contrast vector link assets mapped dynamically to the official GitHub releases registry for clean live updates.")
+                                                ChangelogBullet("Zero-Frame Latency", "Refined coroutine pipeline boundaries and state tracking inside the web link sniffer view to provide fluid 60FPS scrolling.")
+                                                ChangelogBullet("Enhanced Safety Guards", "Engineered error-boundary fallbacks inside local database initialization to prevent state corruptions during upgrade cycles.")
+                                            }
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.08f))
+                                    Spacer(modifier = Modifier.height(8.dp))
+
+                                    // Version 1.1 Item (Current)
+                                    val isV11Expanded = expandedReleaseVersion == "1.1"
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .clickable { 
+                                                expandedReleaseVersion = if (isV11Expanded) "" else "1.1"
+                                            }
+                                            .background(
+                                                if (isV11Expanded) MaterialTheme.colorScheme.surface.copy(alpha = 0.5f)
+                                                else Color.Transparent
+                                            )
+                                            .padding(10.dp)
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Text(
+                                                text = "v1.1",
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 14.sp,
+                                                color = MaterialTheme.colorScheme.secondary,
+                                                modifier = Modifier.width(44.dp)
+                                            )
+                                            
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    text = "StreamCast Rebranding",
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    fontSize = 12.sp,
+                                                    color = MaterialTheme.colorScheme.onSurface
+                                                )
+                                                Text(
+                                                    text = "Released: June 2026",
+                                                    fontSize = 10.sp,
+                                                    color = MaterialTheme.colorScheme.outline
+                                                )
+                                            }
+
+                                            // Stable Badge
+                                            Surface(
+                                                shape = RoundedCornerShape(6.dp),
+                                                color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.1f),
+                                                modifier = Modifier.padding(horizontal = 4.dp)
+                                            ) {
+                                                Text(
+                                                    text = "STABLE",
+                                                    fontSize = 8.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = MaterialTheme.colorScheme.secondary,
+                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                )
+                                            }
+
+                                            Icon(
+                                                imageVector = if (isV11Expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                                                contentDescription = if (isV11Expanded) "Collapse" else "Expand",
+                                                tint = MaterialTheme.colorScheme.outline,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        }
+
+                                        if (isV11Expanded) {
+                                            Spacer(modifier = Modifier.height(10.dp))
+                                            Column(modifier = Modifier.padding(start = 12.dp)) {
+                                                ChangelogBullet("App Rebranding", "Completely modernized application identity to StreamCast across database namespaces, class indicators, UI elements, and string labels.")
+                                                ChangelogBullet("Custom Vector Logo", "Designed and deployed ic_streamcast_logo dynamically with beautiful linear gradients and casting waves for a polished and high-end vibe.")
+                                                ChangelogBullet("Developer Identity", "Integrated detailed Developer Profile sheet featuring custom email clipboard support for direct, frictionless reach.")
+                                                ChangelogBullet("Clean Separation", "Migrated persistent data layers to 'stream_cast_database' to ensure reliable schema separation and local file integrity.")
+                                            }
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.08f))
+                                    Spacer(modifier = Modifier.height(8.dp))
+
+                                    // Version 1.0 Item (Legacy)
+                                    val isV10Expanded = expandedReleaseVersion == "1.0"
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .clickable { 
+                                                expandedReleaseVersion = if (isV10Expanded) "" else "1.0"
+                                            }
+                                            .background(
+                                                if (isV10Expanded) MaterialTheme.colorScheme.surface.copy(alpha = 0.5f)
+                                                else Color.Transparent
+                                            )
+                                            .padding(10.dp)
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Text(
+                                                text = "v1.0",
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 14.sp,
+                                                color = MaterialTheme.colorScheme.secondary,
+                                                modifier = Modifier.width(44.dp)
+                                            )
+                                            
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    text = "Initial Launch Engine",
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    fontSize = 12.sp,
+                                                    color = MaterialTheme.colorScheme.onSurface
+                                                )
+                                                Text(
+                                                    text = "Released: May 2026",
+                                                    fontSize = 10.sp,
+                                                    color = MaterialTheme.colorScheme.outline
+                                                )
+                                            }
+
+                                            // Stable Badge
+                                            Surface(
+                                                shape = RoundedCornerShape(6.dp),
+                                                color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.1f),
+                                                modifier = Modifier.padding(horizontal = 4.dp)
+                                            ) {
+                                                Text(
+                                                    text = "STABLE",
+                                                    fontSize = 8.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = MaterialTheme.colorScheme.secondary,
+                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                )
+                                            }
+
+                                            Icon(
+                                                imageVector = if (isV10Expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                                                contentDescription = if (isV10Expanded) "Collapse" else "Expand",
+                                                tint = MaterialTheme.colorScheme.outline,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        }
+
+                                        if (isV10Expanded) {
+                                            Spacer(modifier = Modifier.height(10.dp))
+                                            Column(modifier = Modifier.padding(start = 12.dp)) {
+                                                ChangelogBullet("Parallel Discovery", "Integrated advanced mDNS (Multicast DNS) and SSDP background protocols to locate media targets within milliseconds.")
+                                                ChangelogBullet("Range-Request Server", "Programmed a responsive local HTTP server to host and feed range-based streams instantly to smart devices.")
+                                                ChangelogBullet("Smart Island Widget", "Crafted a gorgeous, floating dynamic overlay to report background volume levels, seek operations, and play/pause statuses.")
+                                                ChangelogBullet("In-App Sniffer Browser", "Embedded custom JavaScript hook injectors into the web tab, instantly extracting castable stream links safely.")
+                                                ChangelogBullet("Cross-Protocol Cast", "Secured low-latency media piping to Chromecasts, Fire TVs, Rokus, and AirPlay devices.")
+                                            }
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(16.dp))
+
+                                    Button(
+                                        onClick = {
+                                            try {
+                                                val intent = android.content.Intent(
+                                                    android.content.Intent.ACTION_VIEW,
+                                                    android.net.Uri.parse("https://github.com/tonysebastine/StreamCast/releases")
+                                                )
+                                                context.startActivity(intent)
+                                            } catch (e: Exception) {
+                                                android.widget.Toast.makeText(context, "Could not open browser", android.widget.Toast.LENGTH_SHORT).show()
+                                            }
+                                        },
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = MaterialTheme.colorScheme.primary
+                                        ),
+                                        shape = RoundedCornerShape(12.dp),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .testTag("github_releases_button")
+                                    ) {
+                                        Icon(
+                                            painter = painterResource(id = R.drawable.ic_github),
+                                            contentDescription = "GitHub logo link icon",
+                                            tint = MaterialTheme.colorScheme.onPrimary,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            text = "View on GitHub Releases",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onPrimary
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -2322,5 +2782,37 @@ fun CasterEqualizer(isPlaying: Boolean, accentColor: Color) {
             size = androidx.compose.ui.geometry.Size(barWidth, h4),
             cornerRadius = androidx.compose.ui.geometry.CornerRadius(2.dp.toPx())
         )
+    }
+}
+
+@Composable
+fun ChangelogBullet(title: String, description: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.Top
+    ) {
+        Text(
+            text = "•",
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.primary,
+            fontSize = 14.sp,
+            modifier = Modifier.padding(end = 8.dp)
+        )
+        Column {
+            Text(
+                text = title,
+                fontWeight = FontWeight.Bold,
+                fontSize = 11.sp,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = description,
+                fontSize = 10.sp,
+                lineHeight = 14.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
     }
 }
