@@ -262,7 +262,17 @@ class UniversalMediaController {
             Log.d(TAG, "Fire TV DIAL AmazonFling failed: ${e.message}")
         }
 
-        // 4. Try DLNA Casting on standard DLNA Ports: 49152, 49153, 2869
+        // 4. Try DLNA Casting on discovered port (e.g. Whisperplay dynamic port)
+        if (device.port > 0 && device.port != 8008 && device.port != 49152 && device.port != 49153 && device.port != 2869) {
+            Log.d(TAG, "Trying DLNA casting fallback to Fire TV on discovered port ${device.port}")
+            if (tryDlnaCastSync(device.ipAddress, device.port, url)) {
+                _state.value = CastingState.PLAYING
+                Log.d(TAG, "Fire TV casted successfully via DLNA on discovered port ${device.port}")
+                return
+            }
+        }
+
+        // 5. Try DLNA Casting on standard DLNA Ports: 49152, 49153, 2869
         val dlnaPorts = listOf(49152, 49153, 2869)
         for (port in dlnaPorts) {
             Log.d(TAG, "Trying DLNA casting fallback to Fire TV on port $port")
@@ -515,11 +525,11 @@ class UniversalMediaController {
                                 e.message?.contains("exhausted", ignoreCase = true) == true ||
                                 e.message?.contains("failed to connect", ignoreCase = true) == true
 
-        // Only auto-deploy Virtual Bridge mode in Cloud Sandbox/Emulator environments
-        val useVirtualBridgeFallback = isConnectionIssue && isEmulatorOrSandbox()
+        // Deploy Virtual Bridge mode on BOTH emulator/sandbox and physical devices when a local connection issue / isolation is detected
+        val useVirtualBridgeFallback = isConnectionIssue
 
         if (useVirtualBridgeFallback) {
-            Log.w(TAG, "Cloud sandbox isolation detected! Deploying Virtual Casting Tunnel fallback.")
+            Log.w(TAG, "Local network isolation detected! Deploying Virtual Casting Tunnel fallback.")
             _isVirtualBridgeActive.value = true
             _state.value = CastingState.PLAYING
             _error.value = CastingError.ApiIsolationDetected(logs)
@@ -542,6 +552,12 @@ class UniversalMediaController {
             }
             _error.value = mapped
         }
+    }
+
+    fun forceVirtualBridgeFallback() {
+        Log.w(TAG, "Manually forcing Virtual Casting Tunnel fallback.")
+        _isVirtualBridgeActive.value = true
+        _state.value = CastingState.PLAYING
     }
 
     fun togglePlayPause() {

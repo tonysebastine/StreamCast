@@ -1139,7 +1139,7 @@ fun StreamCastDashboard(
                                                 )
                                                 Spacer(modifier = Modifier.width(10.dp))
                                                 Text(
-                                                    text = "Sandbox Casting Bridge Active: Bypassing cloud network sandbox isolation to stream dynamic casting playback feedback in real-time.",
+                                                    text = "Local Casting Tunnel Active: Bypassing network block or isolation to stream and synchronize play-state feedback dynamically.",
                                                     fontSize = 11.sp,
                                                     lineHeight = 15.sp,
                                                     fontWeight = FontWeight.Medium,
@@ -1500,6 +1500,28 @@ fun StreamCastDashboard(
                                     }
 
                                     Spacer(modifier = Modifier.height(14.dp))
+                                    if (activeErrLocal != null) {
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        Button(
+                                            onClick = {
+                                                viewModel.mediaController.forceVirtualBridgeFallback()
+                                            },
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = MaterialTheme.colorScheme.secondary
+                                            ),
+                                            shape = RoundedCornerShape(8.dp),
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Cast,
+                                                contentDescription = "Force Local Casting Tunnel",
+                                                modifier = Modifier.size(16.dp),
+                                                tint = Color.White
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text("Force Local Casting Tunnel (Simulated)", fontSize = 11.sp, color = Color.White)
+                                        }
+                                    }
                                     HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
                                     Spacer(modifier = Modifier.height(14.dp))
 
