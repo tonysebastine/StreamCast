@@ -61,12 +61,40 @@ class LocalHttpServer(private val context: Context, val port: Int = 8182) {
             val connectionInfo = wifiManager.connectionInfo
             val ipAddress = connectionInfo.ipAddress
             if (ipAddress == 0) {
+                // Fallback to network interfaces if wifiInfo IP is 0 (due to lack of location permission on newer Android versions)
+                val interfaces = java.net.NetworkInterface.getNetworkInterfaces()
+                while (interfaces.hasMoreElements()) {
+                    val intf = interfaces.nextElement()
+                    val addrs = intf.inetAddresses
+                    while (addrs.hasMoreElements()) {
+                        val addr = addrs.nextElement()
+                        if (!addr.isLoopbackAddress && addr is java.net.Inet4Address) {
+                            return addr.hostAddress
+                        }
+                    }
+                }
                 null
             } else {
                 Formatter.formatIpAddress(ipAddress)
             }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to resolve local IP address: ${e.message}")
+            // Primary fallback on exception
+            try {
+                val interfaces = java.net.NetworkInterface.getNetworkInterfaces()
+                while (interfaces.hasMoreElements()) {
+                    val intf = interfaces.nextElement()
+                    val addrs = intf.inetAddresses
+                    while (addrs.hasMoreElements()) {
+                        val addr = addrs.nextElement()
+                        if (!addr.isLoopbackAddress && addr is java.net.Inet4Address) {
+                            return addr.hostAddress
+                        }
+                    }
+                }
+            } catch (ex: Exception) {
+                Log.e(TAG, "Secondary IP fallback failed: ${ex.message}")
+            }
             null
         }
     }

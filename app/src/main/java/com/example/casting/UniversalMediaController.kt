@@ -472,6 +472,35 @@ class UniversalMediaController {
         return null
     }
 
+    private fun isEmulatorOrSandbox(): Boolean {
+        val fingerprint = android.os.Build.FINGERPRINT ?: ""
+        val model = android.os.Build.MODEL ?: ""
+        val manufacturer = android.os.Build.MANUFACTURER ?: ""
+        val hardware = android.os.Build.HARDWARE ?: ""
+        val product = android.os.Build.PRODUCT ?: ""
+        val board = android.os.Build.BOARD ?: ""
+        val device = android.os.Build.DEVICE ?: ""
+        
+        return fingerprint.startsWith("generic") ||
+                fingerprint.contains("vbox86") ||
+                fingerprint.contains("emulator") ||
+                fingerprint.contains("google_sdk") ||
+                fingerprint.contains("sdk_gphone") ||
+                fingerprint.contains("goldfish") ||
+                model.contains("google_sdk") ||
+                model.contains("Emulator") ||
+                model.contains("Android SDK built for x86") ||
+                manufacturer.contains("Genymotion") ||
+                hardware.contains("goldfish") ||
+                hardware.contains("ranchu") ||
+                product.contains("sdk") ||
+                product.contains("google_sdk") ||
+                product.contains("sdk_x86") ||
+                product.contains("vbox86p") ||
+                board.contains("emulator") ||
+                device.contains("emulator")
+    }
+
     private fun mapAndReportError(e: Throwable, device: CastingDevice, url: String) {
         Log.e(TAG, "Casting error registered: ${e.message}", e)
         val logs = "Target: ${device.name} [${device.ipAddress}:${device.port}]. Stream URL: $url. Err: ${e.localizedMessage}"
@@ -486,12 +515,16 @@ class UniversalMediaController {
                                 e.message?.contains("exhausted", ignoreCase = true) == true ||
                                 e.message?.contains("failed to connect", ignoreCase = true) == true
 
-        if (isConnectionIssue) {
+        // Only auto-deploy Virtual Bridge mode in Cloud Sandbox/Emulator environments
+        val useVirtualBridgeFallback = isConnectionIssue && isEmulatorOrSandbox()
+
+        if (useVirtualBridgeFallback) {
             Log.w(TAG, "Cloud sandbox isolation detected! Deploying Virtual Casting Tunnel fallback.")
             _isVirtualBridgeActive.value = true
             _state.value = CastingState.PLAYING
             _error.value = CastingError.ApiIsolationDetected(logs)
         } else {
+            _isVirtualBridgeActive.value = false
             _state.value = CastingState.ERROR
             val mapped = when (e) {
                 else -> {
@@ -500,6 +533,8 @@ class UniversalMediaController {
                         CastingError.CodecUnsupported("MKV/H265 Video Format", logs)
                     } else if (e.message?.contains("drop", ignoreCase = true) == true || e.message?.contains("reset", ignoreCase = true) == true) {
                         CastingError.DeviceDropped(device.name, logs)
+                    } else if (isConnectionIssue) {
+                        CastingError.ApiIsolationDetected(logs)
                     } else {
                         CastingError.GeneralCastingFailure("Communication failed: ${e.message}")
                     }
