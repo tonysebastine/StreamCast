@@ -482,7 +482,9 @@ class UniversalMediaController {
                                 e is java.net.NoRouteToHostException ||
                                 e.message?.contains("timeout", ignoreCase = true) == true ||
                                 e.message?.contains("connect", ignoreCase = true) == true ||
-                                e.message?.contains("route", ignoreCase = true) == true
+                                e.message?.contains("route", ignoreCase = true) == true ||
+                                e.message?.contains("exhausted", ignoreCase = true) == true ||
+                                e.message?.contains("failed to connect", ignoreCase = true) == true
 
         if (isConnectionIssue) {
             Log.w(TAG, "Cloud sandbox isolation detected! Deploying Virtual Casting Tunnel fallback.")
