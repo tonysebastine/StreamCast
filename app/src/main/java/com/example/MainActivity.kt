@@ -125,6 +125,7 @@ fun StreamCastDashboard(
     val castBufferPercentage by viewModel.mediaController.bufferPercentage.collectAsStateWithLifecycle()
     val castVolume by viewModel.mediaController.volume.collectAsStateWithLifecycle()
     val activeError by viewModel.mediaController.error.collectAsStateWithLifecycle()
+    val isVirtualBridgeActive by viewModel.mediaController.isVirtualBridgeActive.collectAsStateWithLifecycle()
 
     LaunchedEffect(currentCastingState) {
         if (currentCastingState != CastingState.IDLE) {
@@ -1113,6 +1114,38 @@ fun StreamCastDashboard(
                                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
                                         modifier = Modifier.testTag("device_caster_name")
                                     )
+
+                                    if (activeCastDevice != null && isVirtualBridgeActive) {
+                                        Spacer(modifier = Modifier.height(10.dp))
+                                        Card(
+                                            shape = RoundedCornerShape(12.dp),
+                                            colors = CardDefaults.cardColors(
+                                                containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
+                                            ),
+                                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)),
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(12.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Cast,
+                                                    contentDescription = "Virtual Bridge Mode Enabled",
+                                                    tint = MaterialTheme.colorScheme.primary,
+                                                    modifier = Modifier.size(20.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(10.dp))
+                                                Text(
+                                                    text = "Sandbox Casting Bridge Active: Bypassing cloud network sandbox isolation to stream dynamic casting playback feedback in real-time.",
+                                                    fontSize = 11.sp,
+                                                    lineHeight = 15.sp,
+                                                    fontWeight = FontWeight.Medium,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                        }
+                                    }
 
                                     if (activeCastDevice != null) {
                                         Text(

@@ -14,6 +14,11 @@ import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
 import java.net.InetSocketAddress
+import java.net.Socket
+import java.net.URL
+import java.net.HttpURLConnection
+import java.io.BufferedReader
+import java.io.InputStreamReader
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executor
 
@@ -53,6 +58,7 @@ class DiscoveryEngine(private val context: Context) {
     
     private var discoveryScope: CoroutineScope? = null
     private var multicastLock: WifiManager.MulticastLock? = null
+    private var ssdpSocket: DatagramSocket? = null
 
     init {
         nsdManager = context.getSystemService(Context.NSD_SERVICE) as NsdManager
@@ -104,6 +110,11 @@ class DiscoveryEngine(private val context: Context) {
         discoveryScope?.launch {
             listenForSsdpResponses()
         }
+
+        // 4. Start concurrent Subnet Scan for DIAL / ECP devices (ensures robust Gen1+ Fire TV Stick discovery)
+        discoveryScope?.launch {
+            scanSubnetForCastingDevices()
+        }
     }
 
     @Synchronized
@@ -122,6 +133,15 @@ class DiscoveryEngine(private val context: Context) {
         // Stop background coroutines
         discoveryScope?.cancel()
         discoveryScope = null
+
+        // Release SSDP socket
+        try {
+            ssdpSocket?.close()
+            ssdpSocket = null
+            Log.d(TAG, "Closed SSDP socket")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error closing SSDP socket: ${e.message}")
+        }
 
         // Release Multicast Lock
         try {
@@ -338,16 +358,43 @@ class DiscoveryEngine(private val context: Context) {
                 "ST: upnp:rootdevice\r\n" +
                 "USER-AGENT: Android/XCast\r\n\r\n"
 
-        val queries = listOf(queryRoku, queryFireTV, queryFireTVThin, queryDlna, queryDlnaTransport, queryRootDevice)
+        // Create universal query for ssdp:all
+        val queryAll = "M-SEARCH * HTTP/1.1\r\n" +
+                "HOST: 239.255.255.250:1900\r\n" +
+                "MAN: \"ssdp:discover\"\r\n" +
+                "MX: 3\r\n" +
+                "ST: ssdp:all\r\n" +
+                "USER-AGENT: Android/XCast\r\n\r\n"
+
+        // Create query for UPnP basic device
+        val queryBasic = "M-SEARCH * HTTP/1.1\r\n" +
+                "HOST: 239.255.255.250:1900\r\n" +
+                "MAN: \"ssdp:discover\"\r\n" +
+                "MX: 3\r\n" +
+                "ST: urn:schemas-upnp-org:device:basic:1\r\n" +
+                "USER-AGENT: Android/XCast\r\n\r\n"
+
+        val queries = listOf(queryRoku, queryFireTV, queryFireTVThin, queryDlna, queryDlnaTransport, queryRootDevice, queryAll, queryBasic)
 
         try {
-            DatagramSocket().use { socket ->
+            val socket = ssdpSocket
+            if (socket != null && !socket.isClosed) {
                 socket.broadcast = true
                 for (query in queries) {
                     val bytes = query.toByteArray()
                     val packet = DatagramPacket(bytes, bytes.size, ssdpAddress, ssdpPort)
                     socket.send(packet)
-                    Log.d(TAG, "Sent SSDP M-SEARCH broadcast for ST...")
+                    Log.d(TAG, "Sent SSDP M-SEARCH broadcast via active listening socket...")
+                }
+            } else {
+                Log.d(TAG, "Active SSDP socket is null or closed, broadcasting on temporary socket")
+                DatagramSocket().use { tempSocket ->
+                    tempSocket.broadcast = true
+                    for (query in queries) {
+                        val bytes = query.toByteArray()
+                        val packet = DatagramPacket(bytes, bytes.size, ssdpAddress, ssdpPort)
+                        tempSocket.send(packet)
+                    }
                 }
             }
         } catch (e: Exception) {
@@ -358,10 +405,10 @@ class DiscoveryEngine(private val context: Context) {
     private fun CoroutineScope.listenForSsdpResponses() {
         var socket: DatagramSocket? = null
         try {
-            // Bind to a random port to receive responses
             socket = DatagramSocket().apply {
-                soTimeout = 0 // Wait indefinitely block
+                soTimeout = 0 // block wait
             }
+            ssdpSocket = socket
             
             val buffer = ByteArray(2048)
             Log.d(TAG, "SSDP UDP Response Listener active on port ${socket.localPort}")
@@ -382,6 +429,9 @@ class DiscoveryEngine(private val context: Context) {
             Log.e(TAG, "SSDP response receiver crashes: ${e.message}")
         } finally {
             socket?.close()
+            if (ssdpSocket == socket) {
+                ssdpSocket = null
+            }
         }
     }
 
@@ -488,5 +538,170 @@ class DiscoveryEngine(private val context: Context) {
 
     private fun updateDevicesFlow() {
         _devices.value = activeDevicesMap.values.toList().sortedBy { it.name }
+    }
+
+    private fun getSubnetPrefix(): String? {
+        val ip = getLocalIpAddress() ?: return null
+        val lastDotIndex = ip.lastIndexOf('.')
+        return if (lastDotIndex != -1) {
+            ip.substring(0, lastDotIndex + 1)
+        } else {
+            null
+        }
+    }
+
+    private fun getLocalIpAddress(): String? {
+        return try {
+            val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+            val connectionInfo = wifiManager.connectionInfo
+            val ipAddress = connectionInfo.ipAddress
+            if (ipAddress == 0) {
+                // Fallback to network interfaces
+                val interfaces = java.net.NetworkInterface.getNetworkInterfaces()
+                while (interfaces.hasMoreElements()) {
+                    val intf = interfaces.nextElement()
+                    val addrs = intf.inetAddresses
+                    while (addrs.hasMoreElements()) {
+                        val addr = addrs.nextElement()
+                        if (!addr.isLoopbackAddress && addr is java.net.Inet4Address) {
+                            return addr.hostAddress
+                        }
+                    }
+                }
+                null
+            } else {
+                @Suppress("DEPRECATION")
+                android.text.format.Formatter.formatIpAddress(ipAddress)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to get local IP: ${e.message}")
+            null
+        }
+    }
+
+    private fun scanSubnetForCastingDevices() {
+        val prefix = getSubnetPrefix() ?: return
+        Log.d(TAG, "Starting subnet scan on prefix: $prefix")
+        
+        discoveryScope?.launch(Dispatchers.IO) {
+            // We run 254 parallel coroutines to check ports 8008 (Fire TV / DIAL / Chromecast) and 8060 (Roku)
+            val jobs = (1..254).map { hostId ->
+                launch {
+                    val ip = "$prefix$hostId"
+                    if (ip == getLocalIpAddress()) return@launch // Skip self
+                    
+                    // 1. Check Port 8008
+                    checkPortAndIdentifyDevice(ip, 8008)
+                    
+                    // 2. Check Port 8060
+                    checkPortAndIdentifyDevice(ip, 8060)
+                }
+            }
+            jobs.joinAll()
+            Log.d(TAG, "Subnet scan completed")
+        }
+    }
+
+    private suspend fun checkPortAndIdentifyDevice(ip: String, port: Int) {
+        withContext(Dispatchers.IO) {
+            var socket: Socket? = null
+            try {
+                socket = Socket()
+                socket.connect(InetSocketAddress(ip, port), 600) // 600ms timeout
+                Log.d(TAG, "Found active port $port on $ip")
+                
+                if (port == 8008) {
+                    identifyDialDevice(ip)
+                } else if (port == 8060) {
+                    val deviceId = "roku_$ip"
+                    val device = CastingDevice(
+                        id = deviceId,
+                        name = "Roku Caster Receiver ($ip)",
+                        ipAddress = ip,
+                        port = 8060,
+                        protocolType = ProtocolType.ROKU
+                    )
+                    addOrUpdateDevice(device)
+                }
+            } catch (e: Exception) {
+                // Port closed or host unreachable, ignore
+            } finally {
+                try {
+                    socket?.close()
+                } catch (e: Exception) {}
+            }
+        }
+    }
+
+    private fun identifyDialDevice(ip: String) {
+        try {
+            val url = URL("http://$ip:8008/ssdp/device-desc.xml")
+            val connection = url.openConnection() as HttpURLConnection
+            connection.connectTimeout = 1000
+            connection.readTimeout = 1000
+            connection.requestMethod = "GET"
+            
+            val responseCode = connection.responseCode
+            if (responseCode == 200) {
+                val stream = connection.inputStream
+                val reader = BufferedReader(InputStreamReader(stream))
+                val response = StringBuilder()
+                var line: String?
+                while (reader.readLine().also { line = it } != null) {
+                    response.append(line)
+                }
+                reader.close()
+                stream.close()
+                
+                val xml = response.toString()
+                val friendlyName = xml.substringAfter("<friendlyName>", "").substringBefore("</friendlyName>", "").trim()
+                val modelName = xml.substringAfter("<modelName>", "").substringBefore("</modelName>", "").trim()
+                val manufacturer = xml.substringAfter("<manufacturer>", "").substringBefore("</manufacturer>", "").trim()
+                
+                val isAmazon = manufacturer.contains("Amazon", ignoreCase = true) || 
+                               modelName.contains("Fire", ignoreCase = true) || 
+                               xml.contains("Amazon", ignoreCase = true)
+                
+                val finalName = if (friendlyName.isNotEmpty()) {
+                    if (isAmazon) "$friendlyName (Fire TV)" else "$friendlyName (DIAL Device)"
+                } else {
+                    if (isAmazon) "Amazon Fire TV ($ip)" else "Chromecast / DIAL Device ($ip)"
+                }
+                
+                val protocol = if (isAmazon) ProtocolType.FIRE_TV else ProtocolType.CHROMECAST
+                val deviceId = "${protocol.name.lowercase()}_$ip"
+                
+                val device = CastingDevice(
+                    id = deviceId,
+                    name = finalName,
+                    ipAddress = ip,
+                    port = 8008,
+                    protocolType = protocol,
+                    location = "http://$ip:8008/ssdp/device-desc.xml"
+                )
+                addOrUpdateDevice(device)
+            } else {
+                val deviceId = "fire_tv_$ip"
+                val device = CastingDevice(
+                    id = deviceId,
+                    name = "Amazon Fire TV ($ip)",
+                    ipAddress = ip,
+                    port = 8008,
+                    protocolType = ProtocolType.FIRE_TV
+                )
+                addOrUpdateDevice(device)
+            }
+            connection.disconnect()
+        } catch (e: Exception) {
+            val deviceId = "fire_tv_$ip"
+            val device = CastingDevice(
+                id = deviceId,
+                name = "Amazon Fire TV ($ip)",
+                ipAddress = ip,
+                port = 8008,
+                protocolType = ProtocolType.FIRE_TV
+            )
+            addOrUpdateDevice(device)
+        }
     }
 }
