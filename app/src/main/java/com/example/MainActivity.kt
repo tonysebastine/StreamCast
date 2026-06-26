@@ -4,7 +4,7 @@ import android.content.Context
 import android.net.Uri
 import android.os.Bundle
 import android.provider.OpenableColumns
-import android.util.Log
+import com.example.AppLogger as Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -20,6 +20,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -84,6 +85,7 @@ import com.example.ui.theme.StreamCastTheme
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Log.i("System", "StreamCast initialized cleanly. Android SDK ${android.os.Build.VERSION.SDK_INT}")
         enableEdgeToEdge()
         setContent {
             StreamCastTheme {
@@ -1629,6 +1631,230 @@ fun StreamCastDashboard(
                                                     lineHeight = 18.sp,
                                                     color = MaterialTheme.colorScheme.onSurface
                                                 )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        item {
+                            // Section: Real-time Debug Console
+                            val logsList by com.example.AppLogger.logs.collectAsStateWithLifecycle(initialValue = emptyList())
+                            var logFilterType by remember { mutableStateOf("ALL") }
+                            
+                            val filteredLogs = remember(logsList, logFilterType) {
+                                when (logFilterType) {
+                                    "ALL" -> logsList
+                                    "ERR" -> logsList.filter { it.level == com.example.LogLevel.ERROR || it.level == com.example.LogLevel.WARN }
+                                    "NET" -> logsList.filter { it.tag.contains("Discovery", ignoreCase = true) || it.tag.contains("Server", ignoreCase = true) }
+                                    "CAST" -> logsList.filter { it.tag.contains("Caster", ignoreCase = true) || it.tag.contains("Controller", ignoreCase = true) || it.tag.contains("UniversalMedia", ignoreCase = true) }
+                                    else -> logsList
+                                }
+                            }
+
+                            Card(
+                                shape = RoundedCornerShape(20.dp),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("terminal_logs_card")
+                            ) {
+                                Column(modifier = Modifier.padding(16.dp)) {
+                                    // Header with pulse indicator
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            // Blinking green pulse indicator
+                                            val infiniteTransition = rememberInfiniteTransition(label = "pulse")
+                                            val pulseAlpha by infiniteTransition.animateFloat(
+                                                initialValue = 0.3f,
+                                                targetValue = 1f,
+                                                animationSpec = infiniteRepeatable(
+                                                    animation = tween(1000, easing = LinearEasing),
+                                                    repeatMode = RepeatMode.Reverse
+                                                ),
+                                                label = "pulseAlpha"
+                                            )
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(10.dp)
+                                                    .clip(CircleShape)
+                                                    .background(Color(0xFF00E676).copy(alpha = pulseAlpha))
+                                                    .border(1.dp, Color(0xFF00C853), CircleShape)
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Column {
+                                                Text(
+                                                    text = "Live Casting Console",
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 14.sp
+                                                )
+                                                Text(
+                                                    text = "Real-time network and casting logs",
+                                                    fontSize = 11.sp,
+                                                    color = MaterialTheme.colorScheme.outline
+                                                )
+                                            }
+                                        }
+
+                                        // Quick Actions
+                                        Row {
+                                            Text(
+                                                text = "Copy All",
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(4.dp))
+                                                    .clickable {
+                                                        val fullLogs = logsList.joinToString("\n") { "[${it.timestamp}] [${it.level}] [${it.tag}] ${it.message}" }
+                                                        if (fullLogs.isNotEmpty()) {
+                                                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                                            val clip = android.content.ClipData.newPlainText("Casting Debug Logs", fullLogs)
+                                                            clipboard.setPrimaryClip(clip)
+                                                            Toast.makeText(context, "Logs copied to clipboard!", Toast.LENGTH_SHORT).show()
+                                                        } else {
+                                                            Toast.makeText(context, "No logs to copy", Toast.LENGTH_SHORT).show()
+                                                        }
+                                                    }
+                                                    .padding(horizontal = 6.dp, vertical = 4.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text(
+                                                text = "Clear",
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.error,
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(4.dp))
+                                                    .clickable {
+                                                        com.example.AppLogger.clear()
+                                                        Toast.makeText(context, "Console logs cleared", Toast.LENGTH_SHORT).show()
+                                                    }
+                                                    .padding(horizontal = 6.dp, vertical = 4.dp)
+                                            )
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(10.dp))
+
+                                    // Filter chips
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        listOf(
+                                            "ALL" to "All Logs",
+                                            "ERR" to "Alerts",
+                                            "NET" to "Network",
+                                            "CAST" to "Caster"
+                                        ).forEach { (filterKey, filterLabel) ->
+                                            val isSelected = logFilterType == filterKey
+                                            Box(
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(12.dp))
+                                                    .background(
+                                                        if (isSelected) MaterialTheme.colorScheme.primary 
+                                                        else MaterialTheme.colorScheme.surface.copy(alpha = 0.6f)
+                                                    )
+                                                    .border(
+                                                        1.dp, 
+                                                        if (isSelected) Color.Transparent 
+                                                        else MaterialTheme.colorScheme.outline.copy(alpha = 0.2f),
+                                                        RoundedCornerShape(12.dp)
+                                                    )
+                                                    .clickable { logFilterType = filterKey }
+                                                    .padding(horizontal = 10.dp, vertical = 4.dp)
+                                            ) {
+                                                Text(
+                                                    text = filterLabel,
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(12.dp))
+
+                                    // Terminal display
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(200.dp)
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(Color(0xFF0F141C)) // Dark terminal theme
+                                            .border(1.dp, Color(0xFF1E2638), RoundedCornerShape(12.dp))
+                                            .padding(10.dp)
+                                    ) {
+                                        if (filteredLogs.isEmpty()) {
+                                            Box(
+                                                modifier = Modifier.fillMaxSize(),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Text(
+                                                    text = "No logs matching current filter.\nTrigger actions like scan or cast to stream records.",
+                                                    fontSize = 11.sp,
+                                                    fontFamily = FontFamily.Monospace,
+                                                    color = Color(0xFF6B7A99),
+                                                    textAlign = TextAlign.Center
+                                                )
+                                            }
+                                        } else {
+                                            val listState = rememberLazyListState()
+                                            // Auto-scroll to bottom when new logs arrive
+                                            LaunchedEffect(filteredLogs.size) {
+                                                if (filteredLogs.isNotEmpty()) {
+                                                    listState.animateScrollToItem(filteredLogs.size - 1)
+                                                }
+                                            }
+                                            
+                                            LazyColumn(
+                                                state = listState,
+                                                modifier = Modifier.fillMaxSize(),
+                                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                                            ) {
+                                                items(filteredLogs) { log ->
+                                                    val color = when (log.level) {
+                                                        com.example.LogLevel.DEBUG -> Color(0xFF00E5FF)
+                                                        com.example.LogLevel.INFO -> Color(0xFF00E676)
+                                                        com.example.LogLevel.WARN -> Color(0xFFFF9100)
+                                                        com.example.LogLevel.ERROR -> Color(0xFFFF1744)
+                                                    }
+                                                    
+                                                    Row(modifier = Modifier.fillMaxWidth()) {
+                                                        Text(
+                                                            text = "[${log.timestamp}]",
+                                                            fontSize = 10.sp,
+                                                            fontFamily = FontFamily.Monospace,
+                                                            color = Color(0xFF53637E)
+                                                        )
+                                                        Spacer(modifier = Modifier.width(4.dp))
+                                                        Text(
+                                                            text = "[${log.tag}]",
+                                                            fontSize = 10.sp,
+                                                            fontFamily = FontFamily.Monospace,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = color,
+                                                            modifier = Modifier.widthIn(max = 100.dp),
+                                                            maxLines = 1,
+                                                            overflow = TextOverflow.Ellipsis
+                                                        )
+                                                        Spacer(modifier = Modifier.width(6.dp))
+                                                        Text(
+                                                            text = log.message,
+                                                            fontSize = 10.sp,
+                                                            fontFamily = FontFamily.Monospace,
+                                                            color = Color(0xFFE2E8F0)
+                                                        )
+                                                    }
+                                                }
                                             }
                                         }
                                     }

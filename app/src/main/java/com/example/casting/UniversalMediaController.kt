@@ -1,6 +1,6 @@
 package com.example.casting
 
-import android.util.Log
+import com.example.AppLogger as Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow

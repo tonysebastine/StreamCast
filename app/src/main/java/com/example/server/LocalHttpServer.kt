@@ -4,7 +4,7 @@ import android.content.Context
 import android.net.Uri
 import android.net.wifi.WifiManager
 import android.text.format.Formatter
-import android.util.Log
+import com.example.AppLogger as Log
 import java.io.BufferedReader
 import java.io.FileInputStream
 import java.io.InputStreamReader

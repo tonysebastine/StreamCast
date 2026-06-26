@@ -2,7 +2,7 @@ package com.example
 
 import android.app.Application
 import android.net.Uri
-import android.util.Log
+import com.example.AppLogger as Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.browser.SniffedVideo
