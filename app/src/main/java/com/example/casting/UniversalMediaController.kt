@@ -201,52 +201,80 @@ class UniversalMediaController {
     }
 
     private fun castToFireTV(device: CastingDevice, url: String, title: String) {
-        // Fire TV uses standard DIAL interface. Let's make an execution post to standard receiver apps
-        val endpoint = "http://${device.ipAddress}:8008/apps/UniversalReceiverPlayer"
-        val xmlBody = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><launch><url>$url</url><title>$title</title></launch>"
+        Log.d(TAG, "Starting multi-protocol casting chain to Fire TV at ${device.ipAddress}")
         
-        val request = Request.Builder()
-            .url(endpoint)
-            .post(xmlBody.toRequestBody("application/xml".toMediaType()))
-            .build()
-
-        okHttpClient.newCall(request).enqueue(object : Callback {
-            override fun onFailure(call: Call, e: IOException) {
-                mapAndReportError(e, device, url)
-            }
-
-            override fun onResponse(call: Call, response: Response) {
-                if (response.isSuccessful || response.code == 201) {
-                    _state.value = CastingState.PLAYING
-                    Log.d(TAG, "Fire TV launcher command success")
-                } else {
-                    // Fire TV custom recovery fallback
-                    launchFireTvFallback(device, url)
-                }
-                response.close()
-            }
-        })
-    }
-
-    private fun launchFireTvFallback(device: CastingDevice, url: String) {
-        // Fallback launched using a simple media render request
-        val endpoint = "http://${device.ipAddress}:8008/apps/SystemMediaRender"
-        val request = Request.Builder()
-            .url(endpoint)
-            .post(url.toRequestBody("text/plain".toMediaType()))
-            .build()
-        
+        // 1. Try DIAL: UniversalReceiverPlayer
         try {
-            val res = okHttpClient.newCall(request).execute()
-            if (res.isSuccessful) {
+            val endpoint = "http://${device.ipAddress}:8008/apps/UniversalReceiverPlayer"
+            val xmlBody = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><launch><url>$url</url><title>$title</title></launch>"
+            val request = Request.Builder()
+                .url(endpoint)
+                .post(xmlBody.toRequestBody("application/xml".toMediaType()))
+                .build()
+            val resp = okHttpClient.newCall(request).execute()
+            val isSuccess = resp.isSuccessful || resp.code == 201 || resp.code == 202
+            resp.close()
+            if (isSuccess) {
                 _state.value = CastingState.PLAYING
-            } else {
-                mapAndReportError(Exception("Fire TV services rejected video format command"), device, url)
+                Log.d(TAG, "Fire TV DIAL launched via UniversalReceiverPlayer")
+                return
             }
-            res.close()
         } catch (e: Exception) {
-            mapAndReportError(e, device, url)
+            Log.d(TAG, "Fire TV DIAL UniversalReceiverPlayer failed: ${e.message}")
         }
+
+        // 2. Try DIAL: SystemMediaRender
+        try {
+            val endpoint = "http://${device.ipAddress}:8008/apps/SystemMediaRender"
+            val request = Request.Builder()
+                .url(endpoint)
+                .post(url.toRequestBody("text/plain".toMediaType()))
+                .build()
+            val resp = okHttpClient.newCall(request).execute()
+            val isSuccess = resp.isSuccessful || resp.code == 201 || resp.code == 202
+            resp.close()
+            if (isSuccess) {
+                _state.value = CastingState.PLAYING
+                Log.d(TAG, "Fire TV DIAL launched via SystemMediaRender")
+                return
+            }
+        } catch (e: Exception) {
+            Log.d(TAG, "Fire TV DIAL SystemMediaRender failed: ${e.message}")
+        }
+
+        // 3. Try DIAL: AmazonFling
+        try {
+            val endpoint = "http://${device.ipAddress}:8008/apps/AmazonFling"
+            val payload = "url=$url&title=$title"
+            val request = Request.Builder()
+                .url(endpoint)
+                .post(payload.toRequestBody("application/x-www-form-urlencoded".toMediaType()))
+                .build()
+            val resp = okHttpClient.newCall(request).execute()
+            val isSuccess = resp.isSuccessful || resp.code == 201 || resp.code == 202
+            resp.close()
+            if (isSuccess) {
+                _state.value = CastingState.PLAYING
+                Log.d(TAG, "Fire TV DIAL launched via AmazonFling")
+                return
+            }
+        } catch (e: Exception) {
+            Log.d(TAG, "Fire TV DIAL AmazonFling failed: ${e.message}")
+        }
+
+        // 4. Try DLNA Casting on standard DLNA Ports: 49152, 49153, 2869
+        val dlnaPorts = listOf(49152, 49153, 2869)
+        for (port in dlnaPorts) {
+            Log.d(TAG, "Trying DLNA casting fallback to Fire TV on port $port")
+            if (tryDlnaCastSync(device.ipAddress, port, url)) {
+                _state.value = CastingState.PLAYING
+                Log.d(TAG, "Fire TV casted successfully via DLNA on port $port")
+                return
+            }
+        }
+
+        // If we reach here, we failed to cast. We will report the error.
+        mapAndReportError(Exception("Fire TV casting failed (all DIAL apps and DLNA fallbacks exhausted)"), device, url)
     }
 
     private fun castToChromecast(device: CastingDevice, url: String, title: String) {
@@ -306,74 +334,142 @@ class UniversalMediaController {
     }
 
     private fun castToDlna(device: CastingDevice, url: String, title: String) {
-        val endpoint = "http://${device.ipAddress}:${device.port}/AVTransport/control"
-        val soapActionSet = "\"urn:schemas-upnp-org:service:AVTransport:1#SetAVTransportURI\""
-        val soapBodySet = """
-            <?xml version="1.0" encoding="utf-8"?>
-            <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
-                <s:Body>
-                    <u:SetAVTransportURI xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
-                        <InstanceID>0</InstanceID>
-                        <CurrentURI>$url</CurrentURI>
-                        <CurrentURIMetaData></CurrentURIMetaData>
-                    </u:SetAVTransportURI>
-                </s:Body>
-            </s:Envelope>
-        """.trimIndent()
-
-        val request = Request.Builder()
-            .url(endpoint)
-            .post(soapBodySet.toRequestBody("text/xml; charset=\"utf-8\"".toMediaType()))
-            .header("SOAPACTION", soapActionSet)
-            .build()
-
-        okHttpClient.newCall(request).enqueue(object : Callback {
-            override fun onFailure(call: Call, e: IOException) {
-                _state.value = CastingState.PLAYING
-            }
-
-            override fun onResponse(call: Call, response: Response) {
-                if (response.isSuccessful) {
-                    sendDlnaPlayCommand(device)
-                } else {
-                    _state.value = CastingState.PLAYING
+        val success = tryDlnaCastSync(device.ipAddress, device.port, url)
+        if (success) {
+            _state.value = CastingState.PLAYING
+            Log.d(TAG, "DLNA Cast completed successfully")
+        } else {
+            // Try standard DLNA ports if the custom discovered port failed
+            val backupPorts = listOf(49152, 49153, 2869)
+            for (port in backupPorts) {
+                if (port != device.port) {
+                    Log.d(TAG, "Retrying DLNA cast on port $port")
+                    if (tryDlnaCastSync(device.ipAddress, port, url)) {
+                        _state.value = CastingState.PLAYING
+                        Log.d(TAG, "DLNA Cast retry succeeded on port $port")
+                        return
+                    }
                 }
-                response.close()
             }
-        })
+            mapAndReportError(Exception("DLNA TV did not accept SetAVTransportURI or Play SOAP command"), device, url)
+        }
     }
 
-    private fun sendDlnaPlayCommand(device: CastingDevice) {
-        val endpoint = "http://${device.ipAddress}:${device.port}/AVTransport/control"
-        val soapActionPlay = "\"urn:schemas-upnp-org:service:AVTransport:1#Play\""
-        val soapBodyPlay = """
-            <?xml version="1.0" encoding="utf-8"?>
-            <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
-                <s:Body>
-                    <u:Play xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
-                        <InstanceID>0</InstanceID>
-                        <Speed>1</Speed>
-                    </u:Play>
-                </s:Body>
-            </s:Envelope>
-        """.trimIndent()
-
-        val request = Request.Builder()
-            .url(endpoint)
-            .post(soapBodyPlay.toRequestBody("text/xml; charset=\"utf-8\"".toMediaType()))
-            .header("SOAPACTION", soapActionPlay)
-            .build()
-
-        okHttpClient.newCall(request).enqueue(object : Callback {
-            override fun onFailure(call: Call, e: IOException) {
-                _state.value = CastingState.PLAYING
+    private fun tryDlnaCastSync(deviceIp: String, port: Int, url: String): Boolean {
+        try {
+            // First, find the AVTransport control URL by reading description.xml if possible
+            val locations = listOf(
+                "http://$deviceIp:$port/description.xml",
+                "http://$deviceIp:$port/upnp/description.xml",
+                "http://$deviceIp:$port/dmr/description.xml"
+            )
+            var controlPath = "/AVTransport/control"
+            for (loc in locations) {
+                try {
+                    val req = Request.Builder().url(loc).get().build()
+                    val resp = okHttpClient.newCall(req).execute()
+                    if (resp.isSuccessful) {
+                        val body = resp.body?.string() ?: ""
+                        resp.close()
+                        val extracted = extractControlUrlFromXml(body, "AVTransport")
+                        if (extracted != null) {
+                            controlPath = extracted
+                            break
+                        }
+                    } else {
+                        resp.close()
+                    }
+                } catch (e: Exception) {
+                    // Ignore and try next location
+                }
             }
+            
+            val cleanPath = if (controlPath.startsWith("/")) controlPath else "/$controlPath"
+            val endpoint = "http://$deviceIp:$port$cleanPath"
+            Log.d(TAG, "Sending DLNA commands to $endpoint")
+            
+            // 1. SetAVTransportURI
+            val soapActionSet = "\"urn:schemas-upnp-org:service:AVTransport:1#SetAVTransportURI\""
+            val soapBodySet = """
+                <?xml version="1.0" encoding="utf-8"?>
+                <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+                    <s:Body>
+                        <u:SetAVTransportURI xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
+                            <InstanceID>0</InstanceID>
+                            <CurrentURI>$url</CurrentURI>
+                            <CurrentURIMetaData></CurrentURIMetaData>
+                        </u:SetAVTransportURI>
+                    </s:Body>
+                </s:Envelope>
+            """.trimIndent()
 
-            override fun onResponse(call: Call, response: Response) {
-                _state.value = CastingState.PLAYING
-                response.close()
+            val reqSet = Request.Builder()
+                .url(endpoint)
+                .post(soapBodySet.toRequestBody("text/xml; charset=\"utf-8\"".toMediaType()))
+                .header("SOAPACTION", soapActionSet)
+                .build()
+
+            val respSet = okHttpClient.newCall(reqSet).execute()
+            val setSuccess = respSet.isSuccessful
+            respSet.close()
+
+            if (!setSuccess) return false
+
+            // 2. Play
+            val soapActionPlay = "\"urn:schemas-upnp-org:service:AVTransport:1#Play\""
+            val soapBodyPlay = """
+                <?xml version="1.0" encoding="utf-8"?>
+                <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+                    <s:Body>
+                        <u:Play xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
+                            <InstanceID>0</InstanceID>
+                            <Speed>1</Speed>
+                        </u:Play>
+                    </s:Body>
+                </s:Envelope>
+            """.trimIndent()
+
+            val reqPlay = Request.Builder()
+                .url(endpoint)
+                .post(soapBodyPlay.toRequestBody("text/xml; charset=\"utf-8\"".toMediaType()))
+                .header("SOAPACTION", soapActionPlay)
+                .build()
+
+            val respPlay = okHttpClient.newCall(reqPlay).execute()
+            val playSuccess = respPlay.isSuccessful
+            respPlay.close()
+            return playSuccess
+        } catch (e: Exception) {
+            Log.e(TAG, "DLNA Cast sync failed for $deviceIp:$port: ${e.message}")
+            return false
+        }
+    }
+
+    private fun extractControlUrlFromXml(xml: String, serviceType: String): String? {
+        try {
+            var index = 0
+            while (true) {
+                val serviceStart = xml.indexOf("<service>", index)
+                if (serviceStart == -1) break
+                val serviceEnd = xml.indexOf("</service>", serviceStart)
+                if (serviceEnd == -1) break
+                
+                val serviceBlock = xml.substring(serviceStart, serviceEnd)
+                if (serviceBlock.contains(serviceType)) {
+                    val controlStart = serviceBlock.indexOf("<controlURL>")
+                    if (controlStart != -1) {
+                        val controlEnd = serviceBlock.indexOf("</controlURL>", controlStart)
+                        if (controlEnd != -1) {
+                            return serviceBlock.substring(controlStart + 12, controlEnd).trim()
+                        }
+                    }
+                }
+                index = serviceEnd
             }
-        })
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to parse control URL from XML: ${e.message}")
+        }
+        return null
     }
 
     private fun mapAndReportError(e: Throwable, device: CastingDevice, url: String) {

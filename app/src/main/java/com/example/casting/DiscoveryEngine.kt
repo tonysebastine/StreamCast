@@ -584,17 +584,16 @@ class DiscoveryEngine(private val context: Context) {
         Log.d(TAG, "Starting subnet scan on prefix: $prefix")
         
         discoveryScope?.launch(Dispatchers.IO) {
-            // We run 254 parallel coroutines to check ports 8008 (Fire TV / DIAL / Chromecast) and 8060 (Roku)
+            // We run parallel coroutines to check ports 8008, 8060, 49152, 49153
             val jobs = (1..254).map { hostId ->
                 launch {
                     val ip = "$prefix$hostId"
                     if (ip == getLocalIpAddress()) return@launch // Skip self
                     
-                    // 1. Check Port 8008
-                    checkPortAndIdentifyDevice(ip, 8008)
-                    
-                    // 2. Check Port 8060
-                    checkPortAndIdentifyDevice(ip, 8060)
+                    launch { checkPortAndIdentifyDevice(ip, 8008) }
+                    launch { checkPortAndIdentifyDevice(ip, 8060) }
+                    launch { checkPortAndIdentifyDevice(ip, 49152) }
+                    launch { checkPortAndIdentifyDevice(ip, 49153) }
                 }
             }
             jobs.joinAll()
@@ -622,6 +621,8 @@ class DiscoveryEngine(private val context: Context) {
                         protocolType = ProtocolType.ROKU
                     )
                     addOrUpdateDevice(device)
+                } else if (port == 49152 || port == 49153) {
+                    identifyDlnaDevice(ip, port)
                 }
             } catch (e: Exception) {
                 // Port closed or host unreachable, ignore
@@ -631,6 +632,78 @@ class DiscoveryEngine(private val context: Context) {
                 } catch (e: Exception) {}
             }
         }
+    }
+
+    private fun identifyDlnaDevice(ip: String, port: Int) {
+        val locations = listOf(
+            "http://$ip:$port/description.xml",
+            "http://$ip:$port/upnp/description.xml",
+            "http://$ip:$port/dmr/description.xml",
+            "http://$ip:$port/"
+        )
+        
+        for (loc in locations) {
+            try {
+                val url = URL(loc)
+                val connection = url.openConnection() as HttpURLConnection
+                connection.connectTimeout = 800
+                connection.readTimeout = 800
+                connection.requestMethod = "GET"
+                
+                if (connection.responseCode == 200) {
+                    val stream = connection.inputStream
+                    val reader = BufferedReader(InputStreamReader(stream))
+                    val response = java.lang.StringBuilder()
+                    var line: String?
+                    while (reader.readLine().also { line = it } != null) {
+                        response.append(line)
+                    }
+                    reader.close()
+                    stream.close()
+                    
+                    val xml = response.toString()
+                    val friendlyName = xml.substringAfter("<friendlyName>", "").substringBefore("</friendlyName>", "").trim()
+                    val manufacturer = xml.substringAfter("<manufacturer>", "").substringBefore("</manufacturer>", "").trim()
+                    
+                    val finalName = if (friendlyName.isNotEmpty()) {
+                        if (friendlyName.contains("Fire", ignoreCase = true) || manufacturer.contains("Amazon", ignoreCase = true)) {
+                            "$friendlyName (Fire TV DLNA)"
+                        } else {
+                            "$friendlyName (DLNA TV)"
+                        }
+                    } else {
+                        "DLNA Smart TV ($ip)"
+                    }
+                    
+                    val deviceId = "dlna_${port}_$ip"
+                    val device = CastingDevice(
+                        id = deviceId,
+                        name = finalName,
+                        ipAddress = ip,
+                        port = port,
+                        protocolType = ProtocolType.DLNA,
+                        location = loc
+                    )
+                    addOrUpdateDevice(device)
+                    connection.disconnect()
+                    return
+                }
+                connection.disconnect()
+            } catch (e: Exception) {
+                // Try next
+            }
+        }
+        
+        // Default DLNA fallback if port was open but desc couldn't be fetched
+        val deviceId = "dlna_${port}_$ip"
+        val device = CastingDevice(
+            id = deviceId,
+            name = "DLNA Smart TV ($ip)",
+            ipAddress = ip,
+            port = port,
+            protocolType = ProtocolType.DLNA
+        )
+        addOrUpdateDevice(device)
     }
 
     private fun identifyDialDevice(ip: String) {
