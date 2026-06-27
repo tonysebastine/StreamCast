@@ -106,6 +106,26 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        LocalNetworkPermissionHelper.handleRequestResult(
+            requestCode,
+            permissions,
+            grantResults,
+            101,
+            onGranted = {
+                Log.i("MainActivity", "Nearby devices / Location permission granted successfully.")
+            },
+            onDenied = {
+                Log.w("MainActivity", "Nearby devices / Location permission request denied by user.")
+            }
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

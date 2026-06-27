@@ -60,7 +60,12 @@ class LocalHttpServer(private val context: Context, val port: Int = 8182) {
             val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
             val connectionInfo = wifiManager.connectionInfo
             val ipAddress = connectionInfo.ipAddress
-            if (ipAddress == 0) {
+            val formattedIp = if (ipAddress != 0) {
+                Formatter.formatIpAddress(ipAddress)
+            } else {
+                "0.0.0.0"
+            }
+            if (ipAddress == 0 || formattedIp == "0.0.0.0" || formattedIp.isEmpty()) {
                 // Fallback to network interfaces if wifiInfo IP is 0 (due to lack of location permission on newer Android versions)
                 val interfaces = java.net.NetworkInterface.getNetworkInterfaces()
                 while (interfaces.hasMoreElements()) {
@@ -69,13 +74,16 @@ class LocalHttpServer(private val context: Context, val port: Int = 8182) {
                     while (addrs.hasMoreElements()) {
                         val addr = addrs.nextElement()
                         if (!addr.isLoopbackAddress && addr is java.net.Inet4Address) {
-                            return addr.hostAddress
+                            val host = addr.hostAddress
+                            if (host != "0.0.0.0" && !host.isNullOrEmpty()) {
+                                return host
+                            }
                         }
                     }
                 }
                 null
             } else {
-                Formatter.formatIpAddress(ipAddress)
+                formattedIp
             }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to resolve local IP address: ${e.message}")
@@ -88,7 +96,10 @@ class LocalHttpServer(private val context: Context, val port: Int = 8182) {
                     while (addrs.hasMoreElements()) {
                         val addr = addrs.nextElement()
                         if (!addr.isLoopbackAddress && addr is java.net.Inet4Address) {
-                            return addr.hostAddress
+                            val host = addr.hostAddress
+                            if (host != "0.0.0.0" && !host.isNullOrEmpty()) {
+                                return host
+                            }
                         }
                     }
                 }
@@ -200,7 +211,18 @@ class LocalHttpServer(private val context: Context, val port: Int = 8182) {
                 output.write(responseHeader.toByteArray())
 
                 if (!isHeadRequest) {
-                    fileInputStream.skip(rangeStart)
+                    var skipped = 0L
+                    while (skipped < rangeStart) {
+                        val skipAmount = fileInputStream.skip(rangeStart - skipped)
+                        if (skipAmount <= 0L) {
+                            val tempBuffer = ByteArray(4096)
+                            val readAmount = fileInputStream.read(tempBuffer, 0, (rangeStart - skipped).coerceAtMost(4096L).toInt())
+                            if (readAmount == -1) break
+                            skipped += readAmount
+                        } else {
+                            skipped += skipAmount
+                        }
+                    }
                     val buffer = ByteArray(1024 * 32)
                     var bytesRemaining = responseContentLength
                     while (bytesRemaining > 0) {
