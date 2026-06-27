@@ -150,6 +150,18 @@ class CastViewModel(application: Application) : AndroidViewModel(application) {
                     3. Restart the TV's media player app to clear its hardware decoder cache.
                     """.trimIndent()
                 }
+                activeError != null && (activeError.title.contains("Isolation", ignoreCase = true) || activeError.debugLogs.contains("Fire TV", ignoreCase = true)) -> {
+                    """
+                    ⚠️ LOCAL CONNECTION / FIRE TV PROTOCOL BLOCKED:
+                    Your Android phone successfully discovered your Fire TV over the network, but all direct connection endpoints (DIAL port 8008, DLNA ports 49152/49153/2869) were rejected or closed by the TV's firewall. This is extremely common on modern Fire OS versions where background casting services are disabled by default.
+
+                    HOW TO CAST FLawlessly to your FIRE TV:
+                    1. On your Amazon Fire TV, search for and install the free app "AirScreen" (or "Cast to TV") from the official Amazon Appstore.
+                    2. Launch the "AirScreen" app on your TV. This immediately registers a standard DLNA and Google Cast server on your local Wi-Fi.
+                    3. Click "Scan Devices" in this app on your phone. You will see a new DLNA / AirPlay device. Select it, and your stream will play immediately!
+                    4. Check if your home Wi-Fi router has "AP Isolation" (Access Point Isolation) enabled, which blocks direct peer-to-peer connections.
+                    """.trimIndent()
+                }
                 activeError != null && activeError.title.contains("Connection", ignoreCase = true) -> {
                     """
                     ❌ CONNECTION/TIMEOUT EXCEPTION:

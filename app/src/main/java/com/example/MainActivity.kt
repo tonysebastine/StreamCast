@@ -585,6 +585,16 @@ fun StreamCastDashboard(
                                                     color = MaterialTheme.colorScheme.outline
                                                 )
                                             }
+                                            if (device.protocolType == ProtocolType.FIRE_TV) {
+                                                Spacer(modifier = Modifier.height(4.dp))
+                                                Text(
+                                                    text = "💡 Tip: If connection fails, launch free 'AirScreen' or 'Cast to TV' app on Fire TV.",
+                                                    fontSize = 10.sp,
+                                                    lineHeight = 12.sp,
+                                                    fontWeight = FontWeight.Medium,
+                                                    color = brandColor
+                                                )
+                                            }
                                         }
                                         if (isSelected) {
                                             Icon(
