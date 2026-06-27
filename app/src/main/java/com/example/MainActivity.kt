@@ -86,6 +86,14 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Log.i("System", "StreamCast initialized cleanly. Android SDK ${android.os.Build.VERSION.SDK_INT}")
+        
+        // Request SDK 36 nearby wifi permission for local network privacy
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            if (checkSelfPermission(android.Manifest.permission.NEARBY_WIFI_DEVICES) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(arrayOf(android.Manifest.permission.NEARBY_WIFI_DEVICES), 101)
+            }
+        }
+        
         enableEdgeToEdge()
         setContent {
             StreamCastTheme {
@@ -338,7 +346,19 @@ fun StreamCastDashboard(
                                                 if (isDiscovering) {
                                                     viewModel.stopDeviceScanning()
                                                 } else {
-                                                    viewModel.startDeviceScanning()
+                                                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                                                         if (context.checkSelfPermission(android.Manifest.permission.NEARBY_WIFI_DEVICES) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                                                             (context as? androidx.activity.ComponentActivity)?.requestPermissions(
+                                                                 arrayOf(android.Manifest.permission.NEARBY_WIFI_DEVICES),
+                                                                 101
+                                                             )
+                                                             Toast.makeText(context, "Nearby Wifi permission is required to detect local casting devices.", Toast.LENGTH_LONG).show()
+                                                         } else {
+                                                             viewModel.startDeviceScanning()
+                                                         }
+                                                     } else {
+                                                         viewModel.startDeviceScanning()
+                                                     }
                                                 }
                                             },
                                             shape = RoundedCornerShape(20.dp),

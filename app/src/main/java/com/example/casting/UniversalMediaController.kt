@@ -405,33 +405,44 @@ class UniversalMediaController {
             // First, find the AVTransport control URL by reading description.xml if possible
             val locations = listOf(
                 "http://$deviceIp:$port/description.xml",
+                "http://$deviceIp:$port/dd.xml",
+                "http://$deviceIp:$port/device-desc.xml",
                 "http://$deviceIp:$port/upnp/description.xml",
-                "http://$deviceIp:$port/dmr/description.xml"
+                "http://$deviceIp:$port/dmr/description.xml",
+                "http://$deviceIp:$port/"
             )
             var controlPath = "/AVTransport/control"
+            var descFound = false
             for (loc in locations) {
                 try {
+                    Log.d(TAG, "Trying to fetch DLNA description XML from: $loc")
                     val req = Request.Builder().url(loc).get().build()
                     val resp = okHttpClient.newCall(req).execute()
-                    if (resp.isSuccessful) {
-                        val body = resp.body?.string() ?: ""
-                        resp.close()
+                    val code = resp.code
+                    val body = resp.body?.string() ?: ""
+                    resp.close()
+                    Log.d(TAG, "Fetched location $loc returned status $code, body length: ${body.length}")
+                    if (code in 200..299 && body.isNotEmpty()) {
                         val extracted = extractControlUrlFromXml(body, "AVTransport")
                         if (extracted != null) {
                             controlPath = extracted
+                            descFound = true
+                            Log.d(TAG, "Extracted AVTransport control URL path: $controlPath from $loc")
                             break
                         }
-                    } else {
-                        resp.close()
                     }
                 } catch (e: Exception) {
-                    // Ignore and try next location
+                    Log.d(TAG, "Failed to fetch description from $loc: ${e.message}")
                 }
+            }
+            
+            if (!descFound) {
+                Log.d(TAG, "No specific AVTransport control URL extracted. Falling back to default: $controlPath")
             }
             
             val cleanPath = if (controlPath.startsWith("/")) controlPath else "/$controlPath"
             val endpoint = "http://$deviceIp:$port$cleanPath"
-            Log.d(TAG, "Sending DLNA commands to $endpoint")
+            Log.d(TAG, "Sending DLNA commands to control endpoint: $endpoint")
             
             // 1. SetAVTransportURI
             val soapActionSet = "\"urn:schemas-upnp-org:service:AVTransport:1#SetAVTransportURI\""
@@ -441,7 +452,7 @@ class UniversalMediaController {
                     <s:Body>
                         <u:SetAVTransportURI xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
                             <InstanceID>0</InstanceID>
-                            <CurrentURI>$url</CurrentURI>
+                            <CurrentURI>${escapeXml(url)}</CurrentURI>
                             <CurrentURIMetaData>$didlMetadata</CurrentURIMetaData>
                         </u:SetAVTransportURI>
                     </s:Body>
@@ -456,9 +467,15 @@ class UniversalMediaController {
 
             val respSet = okHttpClient.newCall(reqSet).execute()
             val setSuccess = respSet.isSuccessful
+            val setCode = respSet.code
+            val setBody = respSet.body?.string() ?: ""
             respSet.close()
 
-            if (!setSuccess) return false
+            Log.d(TAG, "SetAVTransportURI response code: $setCode, success: $setSuccess")
+            if (!setSuccess) {
+                Log.e(TAG, "SetAVTransportURI failed with body: $setBody")
+                return false
+            }
 
             // 2. Play
             val soapActionPlay = "\"urn:schemas-upnp-org:service:AVTransport:1#Play\""
@@ -482,10 +499,17 @@ class UniversalMediaController {
 
             val respPlay = okHttpClient.newCall(reqPlay).execute()
             val playSuccess = respPlay.isSuccessful
+            val playCode = respPlay.code
+            val playBody = respPlay.body?.string() ?: ""
             respPlay.close()
+
+            Log.d(TAG, "Play response code: $playCode, success: $playSuccess")
+            if (!playSuccess) {
+                Log.e(TAG, "Play command failed with body: $playBody")
+            }
             return playSuccess
         } catch (e: Exception) {
-            Log.e(TAG, "DLNA Cast sync failed for $deviceIp:$port: ${e.message}")
+            Log.e(TAG, "DLNA Cast sync failed for $deviceIp:$port: ${e.message}", e)
             return false
         }
     }
