@@ -203,7 +203,30 @@ class UniversalMediaController {
     private fun castToFireTV(device: CastingDevice, url: String, title: String) {
         Log.d(TAG, "Starting multi-protocol casting chain to Fire TV at ${device.ipAddress}")
         
-        // 1. Try DIAL: UniversalReceiverPlayer
+        // 1. Try DIAL: amzn.thin.pl (The official built-in Amazon Fling receiver)
+        try {
+            val endpoint = "http://${device.ipAddress}:8008/apps/amzn.thin.pl"
+            val metadataJson = """{"type":"video","title":"$title","description":"Casting from StreamCast","noreplay":false}"""
+            val encodedUrl = java.net.URLEncoder.encode(url, "UTF-8")
+            val encodedMetadata = java.net.URLEncoder.encode(metadataJson, "UTF-8")
+            val payload = "url=$encodedUrl&metadata=$encodedMetadata"
+            val request = Request.Builder()
+                .url(endpoint)
+                .post(payload.toRequestBody("application/x-www-form-urlencoded".toMediaType()))
+                .build()
+            val resp = okHttpClient.newCall(request).execute()
+            val isSuccess = resp.isSuccessful || resp.code == 201 || resp.code == 202
+            resp.close()
+            if (isSuccess) {
+                _state.value = CastingState.PLAYING
+                Log.d(TAG, "Fire TV DIAL launched via amzn.thin.pl successfully")
+                return
+            }
+        } catch (e: Exception) {
+            Log.d(TAG, "Fire TV DIAL amzn.thin.pl failed: ${e.message}")
+        }
+
+        // 2. Try DIAL: UniversalReceiverPlayer
         try {
             val endpoint = "http://${device.ipAddress}:8008/apps/UniversalReceiverPlayer"
             val xmlBody = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><launch><url>$url</url><title>$title</title></launch>"
@@ -223,7 +246,7 @@ class UniversalMediaController {
             Log.d(TAG, "Fire TV DIAL UniversalReceiverPlayer failed: ${e.message}")
         }
 
-        // 2. Try DIAL: SystemMediaRender
+        // 3. Try DIAL: SystemMediaRender
         try {
             val endpoint = "http://${device.ipAddress}:8008/apps/SystemMediaRender"
             val request = Request.Builder()
@@ -242,7 +265,7 @@ class UniversalMediaController {
             Log.d(TAG, "Fire TV DIAL SystemMediaRender failed: ${e.message}")
         }
 
-        // 3. Try DIAL: AmazonFling
+        // 4. Try DIAL: AmazonFling
         try {
             val endpoint = "http://${device.ipAddress}:8008/apps/AmazonFling"
             val payload = "url=$url&title=$title"
@@ -638,8 +661,12 @@ class UniversalMediaController {
                             // On failure, if we are trying to pause/stop, trigger DIAL DELETE as fallback
                             if (action == "Pause") {
                                 val dialEndpoints = listOf(
+                                    "http://${device.ipAddress}:8008/apps/amzn.thin.pl/run",
+                                    "http://${device.ipAddress}:8008/apps/amzn.thin.pl",
                                     "http://${device.ipAddress}:8008/apps/UniversalReceiverPlayer/run",
-                                    "http://${device.ipAddress}:8008/apps/SystemMediaRender/run"
+                                    "http://${device.ipAddress}:8008/apps/SystemMediaRender/run",
+                                    "http://${device.ipAddress}:8008/apps/AmazonFling/run",
+                                    "http://${device.ipAddress}:8008/apps/AmazonFling"
                                 )
                                 for (dialEp in dialEndpoints) {
                                     try {
@@ -832,8 +859,12 @@ class UniversalMediaController {
                         ProtocolType.FIRE_TV -> {
                             // Stop casting by sending a DIAL DELETE request to the running application instances
                             val dialEndpoints = listOf(
+                                "http://${device.ipAddress}:8008/apps/amzn.thin.pl/run",
+                                "http://${device.ipAddress}:8008/apps/amzn.thin.pl",
                                 "http://${device.ipAddress}:8008/apps/UniversalReceiverPlayer/run",
-                                "http://${device.ipAddress}:8008/apps/SystemMediaRender/run"
+                                "http://${device.ipAddress}:8008/apps/SystemMediaRender/run",
+                                "http://${device.ipAddress}:8008/apps/AmazonFling/run",
+                                "http://${device.ipAddress}:8008/apps/AmazonFling"
                             )
                             for (dialEp in dialEndpoints) {
                                 try {
