@@ -78,20 +78,20 @@ import com.example.browser.WebSnifferBrowser
 import com.example.casting.CastingDevice
 import com.example.casting.CastingState
 import com.example.casting.ProtocolType
+import com.example.casting.LocalNetworkPermissionHelper
 import com.example.database.BookmarkedUrl
 import com.example.database.CastHistoryItem
 import com.example.ui.theme.StreamCastTheme
+import android.app.Activity
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Log.i("System", "StreamCast initialized cleanly. Android SDK ${android.os.Build.VERSION.SDK_INT}")
         
-        // Request SDK 36 nearby wifi permission for local network privacy
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-            if (checkSelfPermission(android.Manifest.permission.NEARBY_WIFI_DEVICES) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                requestPermissions(arrayOf(android.Manifest.permission.NEARBY_WIFI_DEVICES), 101)
-            }
+        // Request SDK 36 nearby wifi permission for local network privacy using helper
+        if (!LocalNetworkPermissionHelper.hasPermission(this)) {
+            LocalNetworkPermissionHelper.requestPermission(this, 101)
         }
         
         enableEdgeToEdge()
@@ -346,19 +346,14 @@ fun StreamCastDashboard(
                                                 if (isDiscovering) {
                                                     viewModel.stopDeviceScanning()
                                                 } else {
-                                                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-                                                         if (context.checkSelfPermission(android.Manifest.permission.NEARBY_WIFI_DEVICES) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                                                             (context as? androidx.activity.ComponentActivity)?.requestPermissions(
-                                                                 arrayOf(android.Manifest.permission.NEARBY_WIFI_DEVICES),
-                                                                 101
-                                                             )
-                                                             Toast.makeText(context, "Nearby Wifi permission is required to detect local casting devices.", Toast.LENGTH_LONG).show()
-                                                         } else {
-                                                             viewModel.startDeviceScanning()
-                                                         }
-                                                     } else {
-                                                         viewModel.startDeviceScanning()
-                                                     }
+                                                    if (!LocalNetworkPermissionHelper.hasPermission(context)) {
+                                                        (context as? Activity)?.let { activity ->
+                                                            LocalNetworkPermissionHelper.requestPermission(activity, 101)
+                                                        }
+                                                        Toast.makeText(context, "Nearby Wifi permission is required to detect local casting devices.", Toast.LENGTH_LONG).show()
+                                                    } else {
+                                                        viewModel.startDeviceScanning()
+                                                    }
                                                 }
                                             },
                                             shape = RoundedCornerShape(20.dp),
