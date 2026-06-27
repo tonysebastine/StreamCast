@@ -14,8 +14,8 @@ android {
     applicationId = "in.thbz.streamcast"
     minSdk = 24
     targetSdk = 36
-    versionCode = 3
-    versionName = "1.2"
+    versionCode = 4
+    versionName = "1.3"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
@@ -41,7 +41,19 @@ android {
       isCrunchPngs = false
       isMinifyEnabled = false
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-      signingConfig = signingConfigs.getByName("release")
+      
+      // Fallback: If custom release keystore doesn't exist or is not fully configured,
+      // fall back to signing with the persistent debug key (from debug.keystore.base64).
+      // This prevents signature mismatch conflicts and ensures seamless updates.
+      val keystorePath = System.getenv("KEYSTORE_PATH") ?: "${rootDir}/my-upload-key.jks"
+      val keystoreFile = file(keystorePath)
+      if (keystoreFile.exists() && !System.getenv("STORE_PASSWORD").isNullOrEmpty()) {
+        signingConfig = signingConfigs.getByName("release")
+        println("Signing release build with custom release keystore: ${keystoreFile.absolutePath}")
+      } else {
+        signingConfig = signingConfigs.getByName("debugConfig")
+        println("No release keystore found or configured. Falling back to persistent debug key for seamless updates.")
+      }
     }
     debug {
       signingConfig = signingConfigs.getByName("debugConfig")
