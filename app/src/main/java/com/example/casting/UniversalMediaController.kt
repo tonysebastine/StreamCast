@@ -288,7 +288,7 @@ class UniversalMediaController {
         // 4. Try DLNA Casting on discovered port (e.g. Whisperplay dynamic port)
         if (device.port > 0 && device.port != 8008 && device.port != 49152 && device.port != 49153 && device.port != 2869) {
             Log.d(TAG, "Trying DLNA casting fallback to Fire TV on discovered port ${device.port}")
-            if (tryDlnaCastSync(device.ipAddress, device.port, url)) {
+            if (tryDlnaCastSync(device.ipAddress, device.port, url, title)) {
                 _state.value = CastingState.PLAYING
                 Log.d(TAG, "Fire TV casted successfully via DLNA on discovered port ${device.port}")
                 return
@@ -299,7 +299,7 @@ class UniversalMediaController {
         val dlnaPorts = listOf(49152, 49153, 2869)
         for (port in dlnaPorts) {
             Log.d(TAG, "Trying DLNA casting fallback to Fire TV on port $port")
-            if (tryDlnaCastSync(device.ipAddress, port, url)) {
+            if (tryDlnaCastSync(device.ipAddress, port, url, title)) {
                 _state.value = CastingState.PLAYING
                 Log.d(TAG, "Fire TV casted successfully via DLNA on port $port")
                 return
@@ -367,7 +367,7 @@ class UniversalMediaController {
     }
 
     private fun castToDlna(device: CastingDevice, url: String, title: String) {
-        val success = tryDlnaCastSync(device.ipAddress, device.port, url)
+        val success = tryDlnaCastSync(device.ipAddress, device.port, url, title)
         if (success) {
             _state.value = CastingState.PLAYING
             Log.d(TAG, "DLNA Cast completed successfully")
@@ -377,7 +377,7 @@ class UniversalMediaController {
             for (port in backupPorts) {
                 if (port != device.port) {
                     Log.d(TAG, "Retrying DLNA cast on port $port")
-                    if (tryDlnaCastSync(device.ipAddress, port, url)) {
+                    if (tryDlnaCastSync(device.ipAddress, port, url, title)) {
                         _state.value = CastingState.PLAYING
                         Log.d(TAG, "DLNA Cast retry succeeded on port $port")
                         return
@@ -388,8 +388,20 @@ class UniversalMediaController {
         }
     }
 
-    private fun tryDlnaCastSync(deviceIp: String, port: Int, url: String): Boolean {
+    private fun escapeXml(value: String): String {
+        return value.replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace("\"", "&quot;")
+            .replace("'", "&apos;")
+    }
+
+    private fun tryDlnaCastSync(deviceIp: String, port: Int, url: String, title: String): Boolean {
         try {
+            val escapedTitle = escapeXml(title)
+            val escapedUrl = escapeXml(url)
+            val didlMetadata = """&lt;DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/"&gt;&lt;item id="0" parentID="-1" restricted="1"&gt;&lt;dc:title&gt;$escapedTitle&lt;/dc:title&gt;&lt;upnp:class&gt;object.item.videoItem&lt;/upnp:class&gt;&lt;res protocolInfo="http-get:*:video/mp4:*"&gt;$escapedUrl&lt;/res&gt;&lt;/item&gt;&lt;/DIDL-Lite&gt;"""
+
             // First, find the AVTransport control URL by reading description.xml if possible
             val locations = listOf(
                 "http://$deviceIp:$port/description.xml",
@@ -430,7 +442,7 @@ class UniversalMediaController {
                         <u:SetAVTransportURI xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
                             <InstanceID>0</InstanceID>
                             <CurrentURI>$url</CurrentURI>
-                            <CurrentURIMetaData></CurrentURIMetaData>
+                            <CurrentURIMetaData>$didlMetadata</CurrentURIMetaData>
                         </u:SetAVTransportURI>
                     </s:Body>
                 </s:Envelope>
