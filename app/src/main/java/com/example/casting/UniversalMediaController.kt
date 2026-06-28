@@ -49,6 +49,11 @@ sealed class CastingError(val title: String, val message: String, val debugLogs:
         message = msg,
         debugLogs = "Exception traces: $msg"
     )
+    class SecureCastRequired(deviceName: String) : CastingError(
+        title = "Secure Cast Pairing Required",
+        message = "Direct connection to '$deviceName' on port 8009 is prohibited by Google Cast secure mutual TLS (mTLS) authentication. Please use the system Cast drawer or the official Cast icon in the app toolbar to pair securely.",
+        debugLogs = "Target: $deviceName. Port: 8009. Protocol: Google Cast mTLS"
+    )
 }
 
 class UniversalMediaController(private val context: android.content.Context? = null) {
@@ -422,64 +427,40 @@ class UniversalMediaController(private val context: android.content.Context? = n
                     Log.i(TAG, "Active Cast session detected on TV. Transferring media stream load request.")
                     loadMediaOnSession(currentSession, url, title)
                 } else {
-                    Log.i(TAG, "No active Cast session found. Setting up GMS SessionManagerListener to capture connection callbacks...")
-                    
-                    val sessionListener = object : com.google.android.gms.cast.framework.SessionManagerListener<com.google.android.gms.cast.framework.CastSession> {
-                        override fun onSessionStarting(session: com.google.android.gms.cast.framework.CastSession) {
-                            Log.d(TAG, "SessionManager: secure Cast session starting...")
-                            _state.value = CastingState.CONNECTING
-                        }
-
-                        override fun onSessionStarted(session: com.google.android.gms.cast.framework.CastSession, sessionId: String) {
-                            Log.i(TAG, "SessionManager: secure Cast session started: $sessionId")
-                            sessionManager.removeSessionManagerListener(this, com.google.android.gms.cast.framework.CastSession::class.java)
-                            loadMediaOnSession(session, url, title)
-                        }
-
-                        override fun onSessionStartFailed(session: com.google.android.gms.cast.framework.CastSession, error: Int) {
-                            Log.e(TAG, "SessionManager: secure Cast session start failed with error: $error")
-                            sessionManager.removeSessionManagerListener(this, com.google.android.gms.cast.framework.CastSession::class.java)
-                            _state.value = CastingState.ERROR
-                            _error.value = CastingError.GeneralCastingFailure("Google Cast SDK connection failed. Error code: $error")
-                        }
-
-                        override fun onSessionEnding(session: com.google.android.gms.cast.framework.CastSession) {
-                            Log.d(TAG, "SessionManager: secure Cast session ending...")
-                        }
-
-                        override fun onSessionEnded(session: com.google.android.gms.cast.framework.CastSession, error: Int) {
-                            Log.d(TAG, "SessionManager: secure Cast session ended. Status: $error")
-                            _state.value = CastingState.IDLE
-                        }
-
-                        override fun onSessionSuspended(session: com.google.android.gms.cast.framework.CastSession, reason: Int) {
-                            Log.w(TAG, "SessionManager: secure Cast session suspended. Reason: $reason")
-                        }
-
-                        override fun onSessionResuming(session: com.google.android.gms.cast.framework.CastSession, sessionId: String) {
-                            Log.d(TAG, "SessionManager: secure Cast session resuming...")
-                        }
-
-                        override fun onSessionResumed(session: com.google.android.gms.cast.framework.CastSession, wasSuspended: Boolean) {
-                            Log.i(TAG, "SessionManager: secure Cast session resumed successfully")
-                            sessionManager.removeSessionManagerListener(this, com.google.android.gms.cast.framework.CastSession::class.java)
-                            loadMediaOnSession(session, url, title)
-                        }
-
-                        override fun onSessionResumeFailed(session: com.google.android.gms.cast.framework.CastSession, error: Int) {
-                            Log.e(TAG, "SessionManager: secure Cast session resume failed with error: $error")
-                            sessionManager.removeSessionManagerListener(this, com.google.android.gms.cast.framework.CastSession::class.java)
-                        }
-                    }
-                    
-                    sessionManager.addSessionManagerListener(sessionListener, com.google.android.gms.cast.framework.CastSession::class.java)
-                    
-                    // Trigger custom local secure TLS pipeline alongside GMS Cast engine for maximum raw socket connectivity
-                    initiateLocalSecureSocketFallback(device, url, title)
+                    Log.w(TAG, "No active authenticated session on 8009. Direct connection prohibited by mTLS. Launching native selector.")
+                    showCastDevicePickerDialog()
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Cast SDK framework initialization exception: ${e.message}. Triggering local secure TLS pipeline fallback...")
-                initiateLocalSecureSocketFallback(device, url, title)
+                Log.e(TAG, "Cast SDK framework initialization exception: ${e.message}. Directly showing cast dialog...")
+                showCastDevicePickerDialog()
+            }
+        }
+    }
+
+    private fun showCastDevicePickerDialog() {
+        Log.i(TAG, "showCastDevicePickerDialog() invoked. Launching the native MediaRoute chooser dialog programmatically...")
+        dispatcherScope.launch(Dispatchers.Main) {
+            try {
+                val ctx = context
+                if (ctx is androidx.fragment.app.FragmentActivity) {
+                    val mediaRouteSelector = com.google.android.gms.cast.framework.CastContext.getSharedInstance(ctx).mergedSelector
+                    if (mediaRouteSelector != null) {
+                        val dialogFragment = androidx.mediarouter.app.MediaRouteChooserDialogFragment()
+                        dialogFragment.routeSelector = mediaRouteSelector
+                        dialogFragment.show(ctx.supportFragmentManager, "androidx.mediarouter.app.MediaRouteChooserDialogFragment")
+                        Log.i(TAG, "MediaRouteChooserDialogFragment displayed successfully.")
+                        _state.value = CastingState.IDLE
+                        return@launch
+                    }
+                }
+                
+                Log.w(TAG, "Context is not FragmentActivity ($ctx). Unable to show dialog fragment directly. Informing user via UI state.")
+                _state.value = CastingState.ERROR
+                _error.value = CastingError.SecureCastRequired(_activeDevice.value?.name ?: "Chromecast compatible device")
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to display programmatic MediaRoute chooser dialog: ${e.message}", e)
+                _state.value = CastingState.ERROR
+                _error.value = CastingError.SecureCastRequired(_activeDevice.value?.name ?: "Chromecast compatible device")
             }
         }
     }
@@ -798,8 +779,8 @@ class UniversalMediaController(private val context: android.content.Context? = n
                                         e is java.net.NoRouteToHostException ||
                                         e.message?.contains("refused", ignoreCase = true) == true
                     if (isUnreachable) {
-                        Log.w(TAG, "Port $port is unreachable or connection refused on $loc. Skipping remaining location checks.")
-                        break@forLocLoop
+                        Log.w(TAG, "Port $port is unreachable or connection refused on $loc. Moving to next location.")
+                        continue@forLocLoop
                     }
                 }
             }

@@ -14,6 +14,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.example.AppLogger as Log
 import kotlinx.coroutines.*
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
@@ -104,23 +105,30 @@ class UpdateCheckService : Service() {
         }
 
         try {
-            var request = Request.Builder().url(manifestUrl).build()
+            val sanitizedUrl = manifestUrl.trim()
+            val targetUrl = sanitizedUrl.toHttpUrlOrNull()
+                ?: throw IllegalArgumentException("Malformed update URL syntax: $sanitizedUrl")
+
+            var request = Request.Builder().url(targetUrl).build()
             var response = okHttpClient.newCall(request).execute()
 
-            // Robust fallback: if checking the default URL on main branch returns 404, retry with master branch
-            if (!response.isSuccessful && response.code == 404 && manifestUrl == DEFAULT_MANIFEST_URL) {
+            // Robust fallback: if checking the default URL on main branch fails (e.g. 404 or 400), retry with master branch
+            if (!response.isSuccessful && (sanitizedUrl == DEFAULT_MANIFEST_URL || sanitizedUrl == DEFAULT_MANIFEST_URL.trim())) {
+                val responseCode = response.code
                 response.close()
-                val fallbackUrl = DEFAULT_MANIFEST_URL.replace("/main/", "/master/")
-                Log.w(TAG, "Manifest returned 404 on main. Retrying with master fallback URL: $fallbackUrl")
-                request = Request.Builder().url(fallbackUrl).build()
+                val fallbackUrl = FALLBACK_MASTER_URL.trim()
+                Log.w(TAG, "Manifest request returned status $responseCode on main. Retrying with master fallback URL: $fallbackUrl")
+                val parsedFallbackUrl = fallbackUrl.toHttpUrlOrNull()
+                    ?: throw IllegalArgumentException("Malformed fallback update URL syntax: $fallbackUrl")
+                request = Request.Builder().url(parsedFallbackUrl).build()
                 response = okHttpClient.newCall(request).execute()
             }
 
             response.use { resp ->
                 if (!resp.isSuccessful) {
-                    val errorMsg = "HTTP error code: ${resp.code}"
-                    Log.e(TAG, errorMsg)
-                    broadcastUpdateResult(false, "", errorMsg)
+                    val errorMsg = "Update server returned HTTP ${resp.code}. If you have not yet pushed 'app-update-manifest.json' to your GitHub repository '${manifestUrl}', this is expected and safe."
+                    Log.w(TAG, errorMsg)
+                    broadcastUpdateResult(false, "", "Update check unavailable (HTTP ${resp.code})")
                     return
                 }
 
@@ -273,5 +281,6 @@ class UpdateCheckService : Service() {
         // Defaults
         const val DEFAULT_INTERVAL_MINUTES = 60L // 1 Hour
         const val DEFAULT_MANIFEST_URL = "https://raw.githubusercontent.com/tonysebastine/StreamCast/main/app-update-manifest.json"
+        const val FALLBACK_MASTER_URL = "https://raw.githubusercontent.com/tonysebastine/StreamCast/master/app-update-manifest.json"
     }
 }
