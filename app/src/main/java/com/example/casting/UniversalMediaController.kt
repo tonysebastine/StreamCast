@@ -375,7 +375,7 @@ class UniversalMediaController(private val context: android.content.Context? = n
         // 5. Try DLNA Casting on discovered port (e.g. Whisperplay dynamic port)
         if (device.port > 0 && device.port != 8008 && device.port != 8009 && device.port != 49152 && device.port != 49153 && device.port != 2869) {
             Log.d(TAG, "Trying DLNA casting fallback to Fire TV on discovered port ${device.port}")
-            if (tryDlnaCastSync(device.ipAddress, device.port, url, title)) {
+            if (tryDlnaCastSync(device, device.port, url, title)) {
                 _state.value = CastingState.PLAYING
                 Log.d(TAG, "Fire TV casted successfully via DLNA on discovered port ${device.port}")
                 return
@@ -388,7 +388,7 @@ class UniversalMediaController(private val context: android.content.Context? = n
         val dlnaPorts = listOf(49152, 49153, 2869)
         for (port in dlnaPorts) {
             Log.d(TAG, "Trying DLNA casting fallback to Fire TV on port $port")
-            if (tryDlnaCastSync(device.ipAddress, port, url, title)) {
+            if (tryDlnaCastSync(device, port, url, title)) {
                 _state.value = CastingState.PLAYING
                 Log.d(TAG, "Fire TV casted successfully via DLNA on port $port")
                 return
@@ -700,7 +700,7 @@ class UniversalMediaController(private val context: android.content.Context? = n
     }
 
     private fun castToDlna(device: CastingDevice, url: String, title: String) {
-        val success = tryDlnaCastSync(device.ipAddress, device.port, url, title)
+        val success = tryDlnaCastSync(device, null, url, title)
         if (success) {
             _state.value = CastingState.PLAYING
             Log.d(TAG, "DLNA Cast completed successfully")
@@ -710,7 +710,7 @@ class UniversalMediaController(private val context: android.content.Context? = n
             for (port in backupPorts) {
                 if (port != device.port) {
                     Log.d(TAG, "Retrying DLNA cast on port $port")
-                    if (tryDlnaCastSync(device.ipAddress, port, url, title)) {
+                    if (tryDlnaCastSync(device, port, url, title)) {
                         _state.value = CastingState.PLAYING
                         Log.d(TAG, "DLNA Cast retry succeeded on port $port")
                         return
@@ -729,27 +729,50 @@ class UniversalMediaController(private val context: android.content.Context? = n
             .replace("'", "&apos;")
     }
 
-    private fun tryDlnaCastSync(deviceIp: String, port: Int, url: String, title: String): Boolean {
+    private fun tryDlnaCastSync(device: CastingDevice, portOverride: Int?, url: String, title: String): Boolean {
+        val deviceIp = device.ipAddress
+        val port = portOverride ?: device.port
         try {
             val escapedTitle = escapeXml(title)
             val escapedUrl = escapeXml(url)
             val didlMetadata = """&lt;DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/"&gt;&lt;item id="0" parentID="-1" restricted="1"&gt;&lt;dc:title&gt;$escapedTitle&lt;/dc:title&gt;&lt;upnp:class&gt;object.item.videoItem&lt;/upnp:class&gt;&lt;res protocolInfo="http-get:*:video/mp4:*"&gt;$escapedUrl&lt;/res&gt;&lt;/item&gt;&lt;/DIDL-Lite&gt;"""
 
-            // First, find the AVTransport control URL by reading description.xml if possible
-            val locations = listOf(
-                "http://$deviceIp:$port/description.xml",
-                "http://$deviceIp:$port/dd.xml",
-                "http://$deviceIp:$port/device-desc.xml",
-                "http://$deviceIp:$port/upnp/description.xml",
-                "http://$deviceIp:$port/dmr/description.xml",
-                "http://$deviceIp:$port/"
+            // First, prioritize the SSDP discovered location if it matches the target port.
+            val locations = mutableListOf<String>()
+            if (portOverride == null || portOverride == device.port) {
+                device.location?.let {
+                    if (it.isNotEmpty()) {
+                        locations.add(it)
+                    }
+                }
+            }
+            val standardPaths = listOf(
+                "/description.xml",
+                "/dd.xml",
+                "/device-desc.xml",
+                "/upnp/description.xml",
+                "/dmr/description.xml",
+                "/"
             )
+            for (path in standardPaths) {
+                val fullUrl = "http://$deviceIp:$port$path"
+                if (!locations.contains(fullUrl)) {
+                    locations.add(fullUrl)
+                }
+            }
+
             var controlPath = "/AVTransport/control"
             var descFound = false
-             forLocLoop@ for (loc in locations) {
+            forLocLoop@ for (loc in locations) {
                 try {
                     Log.d(TAG, "Trying to fetch DLNA description XML from: $loc")
-                    val req = Request.Builder().url(loc).get().build()
+                    val req = Request.Builder()
+                        .url(loc)
+                        .header("User-Agent", "DLNADOC/1.50 SEC_HHP_ [TV] Samsung/1.0 UPnP/1.0")
+                        .header("Accept", "text/xml, application/xml, */*")
+                        .header("Connection", "close")
+                        .get()
+                        .build()
                     fastProbingClient.newCall(req).execute().use { resp ->
                         val code = resp.code
                         val body = resp.body?.string() ?: ""
@@ -770,8 +793,12 @@ class UniversalMediaController(private val context: android.content.Context? = n
                     }
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to fetch description from $loc: ${e.message}", e)
-                    if (isConnectionFailure(e)) {
-                        Log.w(TAG, "Port $port is unreachable or connection timed out on $loc. Skipping remaining location checks.")
+                    val isUnreachable = e is java.net.ConnectException || 
+                                        e is java.net.PortUnreachableException || 
+                                        e is java.net.NoRouteToHostException ||
+                                        e.message?.contains("refused", ignoreCase = true) == true
+                    if (isUnreachable) {
+                        Log.w(TAG, "Port $port is unreachable or connection refused on $loc. Skipping remaining location checks.")
                         break@forLocLoop
                     }
                 }
@@ -820,6 +847,8 @@ class UniversalMediaController(private val context: android.content.Context? = n
                         .url(endpoint)
                         .post(soapBodySet.toRequestBody("text/xml; charset=\"utf-8\"".toMediaType()))
                         .header("SOAPACTION", soapActionSet)
+                        .header("User-Agent", "DLNADOC/1.50")
+                        .header("Connection", "close")
                         .build()
 
                     var setSuccess = false
@@ -855,6 +884,8 @@ class UniversalMediaController(private val context: android.content.Context? = n
                         .url(endpoint)
                         .post(soapBodyPlay.toRequestBody("text/xml; charset=\"utf-8\"".toMediaType()))
                         .header("SOAPACTION", soapActionPlay)
+                        .header("User-Agent", "DLNADOC/1.50")
+                        .header("Connection", "close")
                         .build()
 
                     var playSuccess = false
@@ -874,11 +905,7 @@ class UniversalMediaController(private val context: android.content.Context? = n
                         Log.e(TAG, "DLNA Play action failed on $endpoint with status code $playCode. SOAP error response: $playBody")
                     }
                 } catch (e: Exception) {
-                    Log.e(TAG, "DLNA SOAP attempt failed for endpoint $endpoint: ${e.message}", e)
-                    if (isConnectionFailure(e)) {
-                        Log.w(TAG, "Host or port is unreachable on endpoint $endpoint. Aborting further control paths.")
-                        break
-                    }
+                    Log.e(TAG, "DLNA SOAP attempt failed for endpoint $endpoint: ${e.message}. Moving to next path.", e)
                 }
             }
             return false
@@ -890,27 +917,49 @@ class UniversalMediaController(private val context: android.content.Context? = n
 
     private fun extractControlUrlFromXml(xml: String, serviceType: String): String? {
         try {
+            // Regex to find service blocks (case-insensitive, handles namespaces and whitespaces)
+            val serviceRegex = Regex("(?i)<service\\b[^>]*>(.*?)</service>")
+            val controlUrlRegex = Regex("(?i)<controlURL\\b[^>]*>(.*?)</controlURL>")
+            
+            val matches = serviceRegex.findAll(xml)
+            for (match in matches) {
+                val serviceBlock = match.groupValues[1]
+                if (serviceBlock.contains(serviceType, ignoreCase = true)) {
+                    val controlMatch = controlUrlRegex.find(serviceBlock)
+                    if (controlMatch != null) {
+                        return controlMatch.groupValues[1].trim()
+                    }
+                }
+            }
+            
+            // Fallback to simpler search
             var index = 0
+            val lowerXml = xml.lowercase()
             while (true) {
-                val serviceStart = xml.indexOf("<service>", index)
+                val serviceStart = lowerXml.indexOf("<service", index)
                 if (serviceStart == -1) break
-                val serviceEnd = xml.indexOf("</service>", serviceStart)
+                val blockStartTagClose = lowerXml.indexOf(">", serviceStart)
+                if (blockStartTagClose == -1) break
+                val serviceEnd = lowerXml.indexOf("</service>", blockStartTagClose)
                 if (serviceEnd == -1) break
                 
-                val serviceBlock = xml.substring(serviceStart, serviceEnd)
-                if (serviceBlock.contains(serviceType)) {
-                    val controlStart = serviceBlock.indexOf("<controlURL>")
+                val serviceBlock = xml.substring(blockStartTagClose + 1, serviceEnd)
+                if (serviceBlock.contains(serviceType, ignoreCase = true)) {
+                    val controlStart = serviceBlock.lowercase().indexOf("<controlurl")
                     if (controlStart != -1) {
-                        val controlEnd = serviceBlock.indexOf("</controlURL>", controlStart)
-                        if (controlEnd != -1) {
-                            return serviceBlock.substring(controlStart + 12, controlEnd).trim()
+                        val controlTagClose = serviceBlock.indexOf(">", controlStart)
+                        if (controlTagClose != -1) {
+                            val controlEnd = serviceBlock.lowercase().indexOf("</controlurl>", controlTagClose)
+                            if (controlEnd != -1) {
+                                return serviceBlock.substring(controlTagClose + 1, controlEnd).trim()
+                            }
                         }
                     }
                 }
-                index = serviceEnd
+                index = serviceEnd + 10
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to parse control URL from XML: ${e.message}")
+            Log.e(TAG, "Error parsing control URL from XML: ${e.message}", e)
         }
         return null
     }

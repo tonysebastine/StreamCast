@@ -1,0 +1,6 @@
+{
+  "versionCode": 4,
+  "versionName": "1.3",
+  "updateUrl": "https://github.com/tonysebastine/StreamCast/releases",
+  "releaseNotes": "Stable update check integration and enhanced multi-port DLNA discovery fallbacks."
+}

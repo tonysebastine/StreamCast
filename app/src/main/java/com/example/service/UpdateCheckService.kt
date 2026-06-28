@@ -104,16 +104,27 @@ class UpdateCheckService : Service() {
         }
 
         try {
-            val request = Request.Builder().url(manifestUrl).build()
-            okHttpClient.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) {
-                    val errorMsg = "HTTP error code: ${response.code}"
+            var request = Request.Builder().url(manifestUrl).build()
+            var response = okHttpClient.newCall(request).execute()
+
+            // Robust fallback: if checking the default URL on main branch returns 404, retry with master branch
+            if (!response.isSuccessful && response.code == 404 && manifestUrl == DEFAULT_MANIFEST_URL) {
+                response.close()
+                val fallbackUrl = DEFAULT_MANIFEST_URL.replace("/main/", "/master/")
+                Log.w(TAG, "Manifest returned 404 on main. Retrying with master fallback URL: $fallbackUrl")
+                request = Request.Builder().url(fallbackUrl).build()
+                response = okHttpClient.newCall(request).execute()
+            }
+
+            response.use { resp ->
+                if (!resp.isSuccessful) {
+                    val errorMsg = "HTTP error code: ${resp.code}"
                     Log.e(TAG, errorMsg)
                     broadcastUpdateResult(false, "", errorMsg)
                     return
                 }
 
-                val body = response.body?.string()
+                val body = resp.body?.string()
                 if (body.isNullOrEmpty()) {
                     val errorMsg = "Empty response body from manifest server"
                     Log.w(TAG, errorMsg)
