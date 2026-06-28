@@ -82,7 +82,15 @@ import com.example.casting.LocalNetworkPermissionHelper
 import com.example.database.BookmarkedUrl
 import com.example.database.CastHistoryItem
 import com.example.ui.theme.StreamCastTheme
+import com.example.ui.DiagnosticHudOverlay
 import android.app.Activity
+import android.content.Intent
+import android.content.IntentFilter
+import android.content.BroadcastReceiver
+import android.os.Build
+import androidx.compose.material.icons.filled.SystemUpdate
+import androidx.compose.material.icons.filled.CloudDownload
+import androidx.compose.material.icons.filled.Settings
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -139,6 +147,73 @@ fun StreamCastDashboard(
     var isSmartIslandEnabled by remember { mutableStateOf(true) }
     var isSmartIslandExpanded by remember { mutableStateOf(false) }
     var expandedReleaseVersion by remember { mutableStateOf("1.2") }
+
+    // App update checker states and SharedPreferences sync
+    val updatePrefs = remember { context.getSharedPreferences(com.example.service.UpdateCheckService.PREFS_NAME, Context.MODE_PRIVATE) }
+    var updateManifestUrl by remember { mutableStateOf(updatePrefs.getString(com.example.service.UpdateCheckService.PREF_MANIFEST_URL, com.example.service.UpdateCheckService.DEFAULT_MANIFEST_URL) ?: com.example.service.UpdateCheckService.DEFAULT_MANIFEST_URL) }
+    var isPeriodicCheckEnabled by remember { mutableStateOf(updatePrefs.getLong(com.example.service.UpdateCheckService.PREF_INTERVAL_MINUTES, com.example.service.UpdateCheckService.DEFAULT_INTERVAL_MINUTES) > 0L) }
+    var isSimulationModeEnabled by remember { mutableStateOf(updatePrefs.getBoolean(com.example.service.UpdateCheckService.PREF_SIMULATION_MODE, false)) }
+    
+    var lastCheckResult by remember { mutableStateOf("Ready to fetch latest manifest.") }
+    var lastCheckServerVersion by remember { mutableStateOf("") }
+    var lastCheckUpdateAvailable by remember { mutableStateOf(false) }
+    var isCheckingUpdates by remember { mutableStateOf(false) }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
+        onResult = { isGranted ->
+            if (isGranted) {
+                Log.i("MainActivity", "Notification permission granted.")
+            } else {
+                Log.w("MainActivity", "Notification permission denied.")
+            }
+        }
+    )
+    
+    LaunchedEffect(Unit) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val status = androidx.core.content.ContextCompat.checkSelfPermission(
+                context,
+                android.Manifest.permission.POST_NOTIFICATIONS
+            )
+            if (status != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                permissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
+        
+        // Start update service on launch with the stored settings
+        val serviceIntent = Intent(context, com.example.service.UpdateCheckService::class.java).apply {
+            action = com.example.service.UpdateCheckService.ACTION_START
+        }
+        context.startService(serviceIntent)
+    }
+
+    DisposableEffect(context) {
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(ctx: Context?, intent: Intent?) {
+                if (intent?.action == com.example.service.UpdateCheckService.ACTION_UPDATE_RESULT) {
+                    val updateAvailable = intent.getBooleanExtra(com.example.service.UpdateCheckService.EXTRA_UPDATE_AVAILABLE, false)
+                    val serverVersion = intent.getStringExtra(com.example.service.UpdateCheckService.EXTRA_SERVER_VERSION) ?: ""
+                    val statusMessage = intent.getStringExtra(com.example.service.UpdateCheckService.EXTRA_STATUS_MESSAGE) ?: ""
+                    
+                    lastCheckUpdateAvailable = updateAvailable
+                    lastCheckServerVersion = serverVersion
+                    lastCheckResult = statusMessage
+                    isCheckingUpdates = false
+                }
+            }
+        }
+        val filter = IntentFilter(com.example.service.UpdateCheckService.ACTION_UPDATE_RESULT)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            context.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            context.registerReceiver(receiver, filter)
+        }
+        
+        onDispose {
+            context.unregisterReceiver(receiver)
+        }
+    }
 
     // Bind VM outputs
     val isDiscovering by viewModel.isDiscovering.collectAsStateWithLifecycle()
@@ -1334,6 +1409,246 @@ fun StreamCastDashboard(
                             }
                         }
 
+                        // Section: APP UPDATES & MANIFEST MANAGER
+                        item {
+                            Card(
+                                shape = RoundedCornerShape(20.dp),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                ),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.25f)),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("app_updates_card")
+                            ) {
+                                Column(modifier = Modifier.padding(18.dp)) {
+                                    // Header
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(36.dp)
+                                                .clip(CircleShape)
+                                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.SystemUpdate,
+                                                contentDescription = "Update checker icon",
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.width(12.dp))
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = "Automatic Updates Checker",
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 14.sp,
+                                                color = MaterialTheme.colorScheme.onBackground
+                                            )
+                                            Text(
+                                                text = "Monitors server manifest periodically",
+                                                fontSize = 11.sp,
+                                                color = MaterialTheme.colorScheme.outline
+                                            )
+                                        }
+                                        
+                                        // Status badge
+                                        Surface(
+                                            shape = RoundedCornerShape(6.dp),
+                                            color = if (isPeriodicCheckEnabled) MaterialTheme.colorScheme.primary.copy(alpha = 0.1f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.1f)
+                                        ) {
+                                            Text(
+                                                text = if (isPeriodicCheckEnabled) "PERIODIC ACTIVE" else "MANUAL ONLY",
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = if (isPeriodicCheckEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                                            )
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(14.dp))
+                                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
+                                    Spacer(modifier = Modifier.height(12.dp))
+
+                                    // Manifest URL field
+                                    Text(
+                                        text = "Update Manifest JSON URL",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.padding(bottom = 4.dp)
+                                    )
+                                    
+                                    OutlinedTextField(
+                                        value = updateManifestUrl,
+                                        onValueChange = { 
+                                            updateManifestUrl = it
+                                            updatePrefs.edit().putString(com.example.service.UpdateCheckService.PREF_MANIFEST_URL, it).apply()
+                                        },
+                                        textStyle = MaterialTheme.typography.bodySmall,
+                                        singleLine = true,
+                                        shape = RoundedCornerShape(10.dp),
+                                        placeholder = { Text("Enter manifest URL...", fontSize = 11.sp) },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        colors = OutlinedTextFieldDefaults.colors(
+                                            focusedContainerColor = MaterialTheme.colorScheme.surface,
+                                            unfocusedContainerColor = MaterialTheme.colorScheme.surface
+                                        )
+                                    )
+
+                                    Spacer(modifier = Modifier.height(12.dp))
+
+                                    // Simulation mode switch
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = "Simulate Update Available",
+                                                fontWeight = FontWeight.SemiBold,
+                                                fontSize = 12.sp,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                            Text(
+                                                text = "Immediately triggers a simulated v1.5-Simulated update notification for local testing.",
+                                                fontSize = 10.sp,
+                                                color = MaterialTheme.colorScheme.outline,
+                                                lineHeight = 13.sp
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Switch(
+                                            checked = isSimulationModeEnabled,
+                                            onCheckedChange = {
+                                                isSimulationModeEnabled = it
+                                                updatePrefs.edit().putBoolean(com.example.service.UpdateCheckService.PREF_SIMULATION_MODE, it).apply()
+                                                
+                                                // Trigger restart/notify service of the setting change
+                                                val intent = Intent(context, com.example.service.UpdateCheckService::class.java).apply {
+                                                    action = com.example.service.UpdateCheckService.ACTION_START
+                                                }
+                                                context.startService(intent)
+                                            },
+                                            colors = SwitchDefaults.colors(
+                                                checkedThumbColor = MaterialTheme.colorScheme.primary,
+                                                checkedTrackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)
+                                            )
+                                        )
+                                    }
+
+                                    Spacer(modifier = Modifier.height(14.dp))
+
+                                    // Control Buttons
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Button(
+                                            onClick = {
+                                                isCheckingUpdates = true
+                                                val intent = Intent(context, com.example.service.UpdateCheckService::class.java).apply {
+                                                    action = com.example.service.UpdateCheckService.ACTION_CHECK_NOW
+                                                }
+                                                context.startService(intent)
+                                                Toast.makeText(context, "Checking manifest server...", Toast.LENGTH_SHORT).show()
+                                            },
+                                            shape = RoundedCornerShape(10.dp),
+                                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            if (isCheckingUpdates) {
+                                                CircularProgressIndicator(
+                                                    modifier = Modifier.size(14.dp),
+                                                    color = MaterialTheme.colorScheme.onPrimary,
+                                                    strokeWidth = 2.dp
+                                                )
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text("Checking...", fontSize = 11.sp)
+                                            } else {
+                                                Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(14.dp))
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text("Check Now", fontSize = 11.sp)
+                                            }
+                                        }
+
+                                        OutlinedButton(
+                                            onClick = {
+                                                val newStatus = !isPeriodicCheckEnabled
+                                                isPeriodicCheckEnabled = newStatus
+                                                // If disabled, set interval to 0. If enabled, set to 60.
+                                                val intervalValue = if (newStatus) com.example.service.UpdateCheckService.DEFAULT_INTERVAL_MINUTES else 0L
+                                                updatePrefs.edit().putLong(com.example.service.UpdateCheckService.PREF_INTERVAL_MINUTES, intervalValue).apply()
+                                                
+                                                val intent = Intent(context, com.example.service.UpdateCheckService::class.java).apply {
+                                                    action = if (newStatus) com.example.service.UpdateCheckService.ACTION_START else com.example.service.UpdateCheckService.ACTION_STOP
+                                                }
+                                                context.startService(intent)
+                                                val msg = if (newStatus) "Periodic background checks enabled!" else "Periodic checks stopped."
+                                                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                                            },
+                                            shape = RoundedCornerShape(10.dp),
+                                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary),
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Icon(Icons.Default.Settings, contentDescription = null, modifier = Modifier.size(14.dp))
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = if (isPeriodicCheckEnabled) "Disable Periodic" else "Enable Periodic",
+                                                fontSize = 11.sp
+                                            )
+                                        }
+                                    }
+
+                                    // Result feedback panel
+                                    if (lastCheckResult.isNotEmpty()) {
+                                        Spacer(modifier = Modifier.height(14.dp))
+                                        Card(
+                                            shape = RoundedCornerShape(10.dp),
+                                            colors = CardDefaults.cardColors(
+                                                containerColor = if (lastCheckUpdateAvailable) MaterialTheme.colorScheme.primary.copy(alpha = 0.08f) else MaterialTheme.colorScheme.surface
+                                            ),
+                                            border = BorderStroke(1.dp, if (lastCheckUpdateAvailable) MaterialTheme.colorScheme.primary.copy(alpha = 0.3f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)),
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Column(modifier = Modifier.padding(10.dp)) {
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.Info,
+                                                        contentDescription = null,
+                                                        tint = if (lastCheckUpdateAvailable) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                                                        modifier = Modifier.size(14.dp)
+                                                    )
+                                                    Spacer(modifier = Modifier.width(6.dp))
+                                                    Text(
+                                                        text = "Status: $lastCheckResult",
+                                                        fontSize = 11.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = if (lastCheckUpdateAvailable) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                                    )
+                                                }
+                                                if (lastCheckUpdateAvailable) {
+                                                    Spacer(modifier = Modifier.height(4.dp))
+                                                    Text(
+                                                        text = "A new stable build v$lastCheckServerVersion is available! Tap the notification to trigger download instructions.",
+                                                        fontSize = 10.sp,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                        lineHeight = 13.sp
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
                         // Section: iQOO SMART ISLAND CONFIGURATION
                         item {
                             Card(
@@ -2402,6 +2717,15 @@ fun StreamCastDashboard(
             onStop = { viewModel.mediaController.stopCasting() },
             isDiscovering = isDiscovering,
             discoveredCount = allDevicesToShow.size
+        )
+
+        // StreamCast Live Diagnostics HUD & Discovery Overlay
+        DiagnosticHudOverlay(
+            isDiscovering = isDiscovering,
+            discoveredDevices = allDevicesToShow,
+            currentCastingState = currentCastingState,
+            activeCastDevice = activeCastDevice,
+            onTriggerScan = { viewModel.startDeviceScanning() }
         )
     }
 }
