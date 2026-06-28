@@ -371,13 +371,18 @@ fun StreamCastDashboard(
             }
         }
     ) { innerPadding ->
-        Column(
+        Box(
             modifier = Modifier
-                .padding(innerPadding)
                 .fillMaxSize()
-                .widthIn(max = 600.dp) // Responsive fluid centering constraints
+                .padding(innerPadding),
+            contentAlignment = Alignment.TopCenter
         ) {
-            when (selectedTab) {
+            Column(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .widthIn(max = 600.dp) // Responsive fluid centering constraints
+            ) {
+                when (selectedTab) {
                 0 -> {
                     // TAB 0: Active devices scanning and local media select
                     LazyColumn(
@@ -2698,6 +2703,7 @@ fun StreamCastDashboard(
                 }
             }
         }
+    }
 
         // Floating dynamic iQOO Smart Island Overlay
         IqooSmartIsland(

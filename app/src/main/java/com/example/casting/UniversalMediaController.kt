@@ -827,6 +827,9 @@ class UniversalMediaController {
         return String.format("%02d:%02d:%02d", hours, minutes, seconds)
     }
 
+    private var seekJob: kotlinx.coroutines.Job? = null
+    private var volumeJob: kotlinx.coroutines.Job? = null
+
     fun seekTo(positionMs: Long) {
         _currentPosition.value = positionMs
         val device = _activeDevice.value ?: return
@@ -842,47 +845,51 @@ class UniversalMediaController {
             return
         }
         
-        dispatcherScope.launch {
-            try {
-                if (device.protocolType == ProtocolType.ROKU) {
-                    // Roku supports seek command via launch contentId parameter, or deep-link position:
-                    // /launch/dev?contentId=...&position=<seconds>
-                    val encodedUrl = java.net.URLEncoder.encode(_currentUrl.value, "UTF-8")
-                    val seconds = positionMs / 1000
-                    val endpoint = "http://${device.ipAddress}:8060/launch/dev?contentId=$encodedUrl&position=$seconds"
-                    val request = Request.Builder().url(endpoint).post("".toRequestBody()).build()
-                    okHttpClient.newCall(request).execute().close()
-                } else if (device.protocolType == ProtocolType.AIRPLAY) {
-                    val seconds = positionMs.toFloat() / 1000f
-                    val endpoint = "http://${device.ipAddress}:7000/scrub?position=$seconds"
-                    val request = Request.Builder().url(endpoint).post("".toRequestBody()).build()
-                    okHttpClient.newCall(request).execute().close()
-                } else if (device.protocolType == ProtocolType.DLNA || device.protocolType == ProtocolType.MIRACAST) {
-                    val timeStr = formatMsToHms(positionMs)
-                    val endpoint = "http://${device.ipAddress}:${device.port}/AVTransport/control"
-                    val soapAction = "\"urn:schemas-upnp-org:service:AVTransport:1#Seek\""
-                    val soapBody = """
-                        <?xml version="1.0" encoding="utf-8"?>
-                        <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
-                            <s:Body>
-                                <u:Seek xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
-                                    <InstanceID>0</InstanceID>
-                                    <Unit>REL_TIME</Unit>
-                                    <Target>$timeStr</Target>
-                                </u:Seek>
-                            </s:Body>
-                        </s:Envelope>
-                    """.trimIndent()
-                    val request = Request.Builder()
-                        .url(endpoint)
-                        .post(soapBody.toRequestBody("text/xml; charset=\"utf-8\"".toMediaType()))
-                        .header("SOAPACTION", soapAction)
-                        .build()
-                    okHttpClient.newCall(request).execute().close()
+        synchronized(this) {
+            seekJob?.cancel()
+            seekJob = dispatcherScope.launch {
+                kotlinx.coroutines.delay(250) // Debounce seek updates by 250ms
+                try {
+                    if (device.protocolType == ProtocolType.ROKU) {
+                        // Roku supports seek command via launch contentId parameter, or deep-link position:
+                        // /launch/dev?contentId=...&position=<seconds>
+                        val encodedUrl = java.net.URLEncoder.encode(_currentUrl.value, "UTF-8")
+                        val seconds = positionMs / 1000
+                        val endpoint = "http://${device.ipAddress}:8060/launch/dev?contentId=$encodedUrl&position=$seconds"
+                        val request = Request.Builder().url(endpoint).post("".toRequestBody()).build()
+                        okHttpClient.newCall(request).execute().close()
+                    } else if (device.protocolType == ProtocolType.AIRPLAY) {
+                        val seconds = positionMs.toFloat() / 1000f
+                        val endpoint = "http://${device.ipAddress}:7000/scrub?position=$seconds"
+                        val request = Request.Builder().url(endpoint).post("".toRequestBody()).build()
+                        okHttpClient.newCall(request).execute().close()
+                    } else if (device.protocolType == ProtocolType.DLNA || device.protocolType == ProtocolType.MIRACAST) {
+                        val timeStr = formatMsToHms(positionMs)
+                        val endpoint = "http://${device.ipAddress}:${device.port}/AVTransport/control"
+                        val soapAction = "\"urn:schemas-upnp-org:service:AVTransport:1#Seek\""
+                        val soapBody = """
+                            <?xml version="1.0" encoding="utf-8"?>
+                            <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+                                <s:Body>
+                                    <u:Seek xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
+                                        <InstanceID>0</InstanceID>
+                                        <Unit>REL_TIME</Unit>
+                                        <Target>$timeStr</Target>
+                                    </u:Seek>
+                                </s:Body>
+                            </s:Envelope>
+                        """.trimIndent()
+                        val request = Request.Builder()
+                            .url(endpoint)
+                            .post(soapBody.toRequestBody("text/xml; charset=\"utf-8\"".toMediaType()))
+                            .header("SOAPACTION", soapAction)
+                            .build()
+                        okHttpClient.newCall(request).execute().close()
+                    }
+                    Log.d(TAG, "Seeked caster position to $positionMs ms")
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed seek action: ${e.message}")
                 }
-                Log.d(TAG, "Seeked caster position to $positionMs ms")
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed seek action: ${e.message}")
             }
         }
     }
@@ -897,45 +904,49 @@ class UniversalMediaController {
             return
         }
 
-        dispatcherScope.launch {
-            try {
-                if (device.protocolType == ProtocolType.ROKU) {
-                    // Roku supports discrete ECP volume steps: VolumeUp / VolumeDown key presses
-                    val currentVol = _volume.value
-                    val actionKey = if (clamped > currentVol) "VolumeUp" else "VolumeDown"
-                    val endpoint = "http://${device.ipAddress}:8060/keypress/$actionKey"
-                    val request = Request.Builder().url(endpoint).post("".toRequestBody()).build()
-                    okHttpClient.newCall(request).execute().close()
-                } else if (device.protocolType == ProtocolType.AIRPLAY) {
-                    val volumeFactor = clamped.toFloat() / 100f
-                    val endpoint = "http://${device.ipAddress}:7000/volume?value=$volumeFactor"
-                    val request = Request.Builder().url(endpoint).post("".toRequestBody()).build()
-                    okHttpClient.newCall(request).execute().close()
-                } else if (device.protocolType == ProtocolType.DLNA || device.protocolType == ProtocolType.MIRACAST) {
-                    val endpoint = "http://${device.ipAddress}:${device.port}/RenderingControl/control"
-                    val soapAction = "\"urn:schemas-upnp-org:service:RenderingControl:1#SetVolume\""
-                    val soapBody = """
-                        <?xml version="1.0" encoding="utf-8"?>
-                        <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
-                            <s:Body>
-                                <u:SetVolume xmlns:u="urn:schemas-upnp-org:service:RenderingControl:1">
-                                    <InstanceID>0</InstanceID>
-                                    <Channel>Master</Channel>
-                                    <DesiredVolume>$clamped</DesiredVolume>
-                                </u:SetVolume>
-                            </s:Body>
-                        </s:Envelope>
-                    """.trimIndent()
-                    val request = Request.Builder()
-                        .url(endpoint)
-                        .post(soapBody.toRequestBody("text/xml; charset=\"utf-8\"".toMediaType()))
-                        .header("SOAPACTION", soapAction)
-                        .build()
-                    okHttpClient.newCall(request).execute().close()
+        synchronized(this) {
+            volumeJob?.cancel()
+            volumeJob = dispatcherScope.launch {
+                kotlinx.coroutines.delay(150) // Debounce volume adjustments by 150ms
+                try {
+                    if (device.protocolType == ProtocolType.ROKU) {
+                        // Roku supports discrete ECP volume steps: VolumeUp / VolumeDown key presses
+                        val currentVol = _volume.value
+                        val actionKey = if (clamped > currentVol) "VolumeUp" else "VolumeDown"
+                        val endpoint = "http://${device.ipAddress}:8060/keypress/$actionKey"
+                        val request = Request.Builder().url(endpoint).post("".toRequestBody()).build()
+                        okHttpClient.newCall(request).execute().close()
+                    } else if (device.protocolType == ProtocolType.AIRPLAY) {
+                        val volumeFactor = clamped.toFloat() / 100f
+                        val endpoint = "http://${device.ipAddress}:7000/volume?value=$volumeFactor"
+                        val request = Request.Builder().url(endpoint).post("".toRequestBody()).build()
+                        okHttpClient.newCall(request).execute().close()
+                    } else if (device.protocolType == ProtocolType.DLNA || device.protocolType == ProtocolType.MIRACAST) {
+                        val endpoint = "http://${device.ipAddress}:${device.port}/RenderingControl/control"
+                        val soapAction = "\"urn:schemas-upnp-org:service:RenderingControl:1#SetVolume\""
+                        val soapBody = """
+                            <?xml version="1.0" encoding="utf-8"?>
+                            <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+                                <s:Body>
+                                    <u:SetVolume xmlns:u="urn:schemas-upnp-org:service:RenderingControl:1">
+                                        <InstanceID>0</InstanceID>
+                                        <Channel>Master</Channel>
+                                        <DesiredVolume>$clamped</DesiredVolume>
+                                    </u:SetVolume>
+                                </s:Body>
+                            </s:Envelope>
+                        """.trimIndent()
+                        val request = Request.Builder()
+                            .url(endpoint)
+                            .post(soapBody.toRequestBody("text/xml; charset=\"utf-8\"".toMediaType()))
+                            .header("SOAPACTION", soapAction)
+                            .build()
+                        okHttpClient.newCall(request).execute().close()
+                    }
+                    Log.d(TAG, "Volume modified to $clamped")
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed volume adjustment: ${e.message}")
                 }
-                Log.d(TAG, "Volume modified to $clamped")
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed volume adjustment: ${e.message}")
             }
         }
     }

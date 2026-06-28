@@ -60,10 +60,8 @@ class UpdateCheckService : Service() {
     }
 
     private fun startPeriodicCheck() {
-        if (periodicJob != null && periodicJob!!.isActive) {
-            Log.d(TAG, "Periodic check is already running")
-            return
-        }
+        // Cancel any existing job to ensure new SharedPreferences configuration (e.g. interval change) is applied immediately
+        periodicJob?.cancel()
 
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val intervalMinutes = prefs.getLong(PREF_INTERVAL_MINUTES, DEFAULT_INTERVAL_MINUTES)
