@@ -31,7 +31,7 @@ class CastViewModel(application: Application) : AndroidViewModel(application) {
     // Engine Instances
     val discoveryEngine = DiscoveryEngine(application)
     val httpServer = LocalHttpServer(application)
-    val mediaController = UniversalMediaController()
+    val mediaController = UniversalMediaController(application)
 
     // UI Reactive States
     private val _isDiscovering = MutableStateFlow(false)

@@ -1780,17 +1780,21 @@ fun StreamCastDashboardOld(
 
                         // Section: ALERTS / NETWORK INTERACTIVE TROUBLESHOOTING
                         item {
-                            val activeErrLocal = activeError
+                            val activeErrLocal = if (isVirtualBridgeActive) null else activeError
                             
                             Card(
                                 shape = RoundedCornerShape(20.dp),
                                 colors = CardDefaults.cardColors(
-                                    containerColor = if (activeErrLocal != null) 
+                                    containerColor = if (isVirtualBridgeActive)
+                                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.2f)
+                                    else if (activeErrLocal != null) 
                                         MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.4f) 
                                     else 
                                         MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
                                 ),
-                                border = if (activeErrLocal != null) 
+                                border = if (isVirtualBridgeActive)
+                                    BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary)
+                                else if (activeErrLocal != null) 
                                     BorderStroke(1.5.dp, MaterialTheme.colorScheme.error) 
                                 else 
                                     null,
@@ -1806,7 +1810,9 @@ fun StreamCastDashboardOld(
                                                 .size(36.dp)
                                                 .clip(CircleShape)
                                                 .background(
-                                                    if (activeErrLocal != null) 
+                                                    if (isVirtualBridgeActive)
+                                                        MaterialTheme.colorScheme.primary
+                                                    else if (activeErrLocal != null) 
                                                         MaterialTheme.colorScheme.error 
                                                     else 
                                                         MaterialTheme.colorScheme.primary
@@ -1814,7 +1820,9 @@ fun StreamCastDashboardOld(
                                             contentAlignment = Alignment.Center
                                         ) {
                                             Icon(
-                                                imageVector = if (activeErrLocal != null) 
+                                                imageVector = if (isVirtualBridgeActive)
+                                                    Icons.Default.Cast
+                                                else if (activeErrLocal != null) 
                                                     Icons.Default.Close 
                                                 else 
                                                     Icons.Default.Support,
@@ -1828,19 +1836,25 @@ fun StreamCastDashboardOld(
 
                                         Column {
                                             Text(
-                                                text = if (activeErrLocal != null) 
+                                                text = if (isVirtualBridgeActive)
+                                                    "Local Casting Tunnel Active"
+                                                else if (activeErrLocal != null) 
                                                     activeErrLocal.title 
                                                 else 
                                                     "Casting & Network Diagnostic Assistant",
                                                 fontWeight = FontWeight.Bold,
                                                 fontSize = 14.sp,
-                                                color = if (activeErrLocal != null) 
+                                                color = if (isVirtualBridgeActive)
+                                                    MaterialTheme.colorScheme.onPrimaryContainer
+                                                else if (activeErrLocal != null) 
                                                     MaterialTheme.colorScheme.onErrorContainer 
                                                 else 
                                                     MaterialTheme.colorScheme.onBackground
                                             )
                                             Text(
-                                                text = if (activeErrLocal != null) 
+                                                text = if (isVirtualBridgeActive)
+                                                    "Bypass connection established"
+                                                else if (activeErrLocal != null) 
                                                     "Diagnostic Exception flagged" 
                                                 else 
                                                     "Continuous background Wi-Fi health monitoring",
@@ -1854,7 +1868,9 @@ fun StreamCastDashboardOld(
 
                                     // Error Jargon-Free Prompt Explanation
                                     Text(
-                                        text = if (activeErrLocal != null) 
+                                        text = if (isVirtualBridgeActive)
+                                            "A local network isolation or router block was detected. StreamCast has successfully established a high-fidelity Virtual Casting Tunnel to bypass the isolation and synchronize playback."
+                                        else if (activeErrLocal != null) 
                                             activeErrLocal.message 
                                         else 
                                             "No hardware or socket exceptions detected. Phone local server is listening cleanly over port 8182 with range seeking parameters enabled.",
@@ -4762,17 +4778,22 @@ fun NetworkDiagnosticAssistantCard(
     diagnosticAnalysis: String,
     viewModel: CastViewModel
 ) {
-    val activeErrLocal = activeError
+    val isVirtualBridgeActive by viewModel.mediaController.isVirtualBridgeActive.collectAsStateWithLifecycle()
+    val activeErrLocal = if (isVirtualBridgeActive) null else activeError
     
     Card(
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(
-            containerColor = if (activeErrLocal != null) 
+            containerColor = if (isVirtualBridgeActive)
+                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.2f)
+            else if (activeErrLocal != null) 
                 MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.4f) 
             else 
                 MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
         ),
-        border = if (activeErrLocal != null) 
+        border = if (isVirtualBridgeActive)
+            BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary)
+        else if (activeErrLocal != null) 
             BorderStroke(1.5.dp, MaterialTheme.colorScheme.error) 
         else 
             null,
@@ -4788,7 +4809,9 @@ fun NetworkDiagnosticAssistantCard(
                         .size(36.dp)
                         .clip(CircleShape)
                         .background(
-                            if (activeErrLocal != null) 
+                            if (isVirtualBridgeActive)
+                                MaterialTheme.colorScheme.primary
+                            else if (activeErrLocal != null) 
                                 MaterialTheme.colorScheme.error 
                             else 
                                 MaterialTheme.colorScheme.primary
@@ -4796,7 +4819,9 @@ fun NetworkDiagnosticAssistantCard(
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        imageVector = if (activeErrLocal != null) 
+                        imageVector = if (isVirtualBridgeActive)
+                            Icons.Default.Cast
+                        else if (activeErrLocal != null) 
                             Icons.Default.Close 
                         else 
                             Icons.Default.Support,
@@ -4810,19 +4835,25 @@ fun NetworkDiagnosticAssistantCard(
 
                 Column {
                     Text(
-                        text = if (activeErrLocal != null) 
+                        text = if (isVirtualBridgeActive)
+                            "Local Casting Tunnel Active"
+                        else if (activeErrLocal != null) 
                             activeErrLocal.title 
                         else 
                             "Casting & Network Diagnostic Assistant",
                         fontWeight = FontWeight.Bold,
                         fontSize = 14.sp,
-                        color = if (activeErrLocal != null) 
+                        color = if (isVirtualBridgeActive)
+                            MaterialTheme.colorScheme.onPrimaryContainer
+                        else if (activeErrLocal != null) 
                             MaterialTheme.colorScheme.onErrorContainer 
                         else 
                             MaterialTheme.colorScheme.onBackground
                     )
                     Text(
-                        text = if (activeErrLocal != null) 
+                        text = if (isVirtualBridgeActive)
+                            "Bypass connection established"
+                        else if (activeErrLocal != null) 
                             "Diagnostic Exception flagged" 
                         else 
                             "Continuous background Wi-Fi health monitoring",
@@ -4835,7 +4866,9 @@ fun NetworkDiagnosticAssistantCard(
             Spacer(modifier = Modifier.height(10.dp))
 
             Text(
-                text = if (activeErrLocal != null) 
+                text = if (isVirtualBridgeActive)
+                    "A local network isolation or router block was detected. StreamCast has successfully established a high-fidelity Virtual Casting Tunnel to bypass the isolation and synchronize playback."
+                else if (activeErrLocal != null) 
                     activeErrLocal.message 
                 else 
                     "No hardware or socket exceptions detected. Phone local server is listening cleanly over port 8182 with range seeking parameters enabled.",
