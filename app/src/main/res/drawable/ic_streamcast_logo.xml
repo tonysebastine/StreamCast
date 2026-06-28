@@ -4,11 +4,28 @@
     android:height="24dp"
     android:viewportWidth="24"
     android:viewportHeight="24">
-    
-    <!-- Outer TV/Casting Monitor Frame with a beautiful glowing gradient -->
+
+    <!-- Screen backdrop or inner display with soft glow -->
     <path
         android:pathData="M 4,6 C 4,4.9 4.9,4 6,4 L 18,4 C 19.1,4 20,4.9 20,6 L 20,14 C 20,15.1 19.1,16 18,16 L 6,16 C 4.9,16 4,15.1 4,14 Z"
-        android:strokeWidth="1.8"
+        android:fillAlpha="0.15">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="4"
+                android:startY="4"
+                android:endX="20"
+                android:endY="16"
+                android:type="linear">
+                <item android:offset="0.0" android:color="#D0BCFF" />
+                <item android:offset="1.0" android:color="#381E72" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Outer sleek TV screen frame with sharp, beautiful linear gradient border -->
+    <path
+        android:pathData="M 4,6 C 4,4.9 4.9,4 6,4 L 18,4 C 19.1,4 20,4.9 20,6 L 20,14 C 20,15.1 19.1,16 18,16 L 6,16 C 4.9,16 4,15.1 4,14 Z"
+        android:strokeWidth="1.6"
         android:strokeLineCap="round"
         android:strokeLineJoin="round">
         <aapt:attr name="android:strokeColor">
@@ -19,15 +36,16 @@
                 android:endY="16"
                 android:type="linear">
                 <item android:offset="0.0" android:color="#E0C3FC" />
-                <item android:offset="1.0" android:color="#8EC5FC" />
+                <item android:offset="0.5" android:color="#A8C2FB" />
+                <item android:offset="1.0" android:color="#86A8E7" />
             </gradient>
         </aapt:attr>
     </path>
 
-    <!-- TV Stand -->
+    <!-- TV Stand with elegant sleek modern design -->
     <path
-        android:pathData="M 10,16 L 8,19 L 16,19 L 14,16"
-        android:strokeWidth="1.5"
+        android:pathData="M 9.5,16 L 8,19.5 C 8,19.8 8.2,20 8.5,20 L 15.5,20 C 15.8,20 16,19.8 16,19.5 L 14.5,16"
+        android:strokeWidth="1.2"
         android:strokeLineCap="round"
         android:strokeLineJoin="round">
         <aapt:attr name="android:strokeColor">
@@ -35,49 +53,56 @@
                 android:startX="8"
                 android:startY="16"
                 android:endX="16"
-                android:endY="19"
+                android:endY="20"
                 android:type="linear">
-                <item android:offset="0.0" android:color="#E0C3FC" />
-                <item android:offset="1.0" android:color="#8EC5FC" />
+                <item android:offset="0.0" android:color="#A8C2FB" />
+                <item android:offset="1.0" android:color="#E0C3FC" />
             </gradient>
         </aapt:attr>
     </path>
 
-    <!-- Centered Play Icon inside the monitor -->
+    <!-- Futuristic Centered Play Icon -->
     <path
-        android:pathData="M 10.5,8 L 14.5,10 L 10.5,12 Z"
+        android:pathData="M 11,8.5 L 15,11 L 11,13.5 Z"
         android:strokeWidth="0.5"
         android:strokeLineJoin="round">
         <aapt:attr name="android:fillColor">
             <gradient
-                android:startX="10"
-                android:startY="8"
+                android:startX="11"
+                android:startY="8.5"
                 android:endX="15"
-                android:endY="12"
+                android:endY="13.5"
                 android:type="linear">
-                <item android:offset="0.0" android:color="#D0BCFF" />
-                <item android:offset="1.0" android:color="#381E72" />
+                <item android:offset="0.0" android:color="#E0C3FC" />
+                <item android:offset="1.0" android:color="#86A8E7" />
             </gradient>
         </aapt:attr>
     </path>
 
-    <!-- Glowing Chromecast-style casting waves (bottom-left) -->
+    <!-- Super-Smooth High-Fidelity Casting Waves (curved paths at the corner) -->
+    <!-- Wave center hub -->
+    <path
+        android:pathData="M 6,14 m -0.8,0 a 0.8,0.8 0 1,1 1.6,0 a 0.8,0.8 0 1,1 -1.6,0"
+        android:fillColor="#FFD8E4" />
+
     <!-- Wave 1 -->
     <path
-        android:pathData="M 6,14 A 1,1 0 0,1 6,12.5"
-        android:strokeWidth="1.2"
+        android:pathData="M 6,11.8 A 2.2,2.2 0 0,1 8.2,14"
+        android:strokeWidth="1.5"
         android:strokeLineCap="round"
-        android:strokeColor="#FFFFFF" />
+        android:strokeColor="#A8C2FB" />
+
     <!-- Wave 2 -->
     <path
-        android:pathData="M 6,14 A 2.5,2.5 0 0,1 6,11"
-        android:strokeWidth="1.2"
+        android:pathData="M 6,9.5 A 4.5,4.5 0 0,1 10.5,14"
+        android:strokeWidth="1.5"
         android:strokeLineCap="round"
-        android:strokeColor="#8EC5FC" />
+        android:strokeColor="#D0BCFF" />
+
     <!-- Wave 3 -->
     <path
-        android:pathData="M 6,14 A 4,4 0 0,1 6,9"
-        android:strokeWidth="1.2"
+        android:pathData="M 6,7.2 A 6.8,6.8 0 0,1 12.8,14"
+        android:strokeWidth="1.5"
         android:strokeLineCap="round"
         android:strokeColor="#E0C3FC" />
 
