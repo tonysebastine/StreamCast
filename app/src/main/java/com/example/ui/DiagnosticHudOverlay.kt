@@ -72,7 +72,6 @@ fun DiagnosticHudOverlay(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .pointerInput(Unit) {} // Keep clicks contained
     ) {
         // FLOATING ACTION TRIGGER BUTTON (Glows active when scanning)
         AnimatedVisibility(
@@ -136,7 +135,9 @@ fun DiagnosticHudOverlay(
             visible = isExpanded,
             enter = slideInVertically(initialOffsetY = { it / 2 }) + fadeIn(),
             exit = slideOutVertically(targetOffsetY = { it / 2 }) + fadeOut(),
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier
+                .fillMaxSize()
+                .pointerInput(Unit) {} // Keep clicks contained when expanded
         ) {
             Surface(
                 color = MaterialTheme.colorScheme.background.copy(alpha = 0.98f),
