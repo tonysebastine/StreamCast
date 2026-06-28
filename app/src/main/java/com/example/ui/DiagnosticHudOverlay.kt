@@ -135,13 +135,17 @@ fun DiagnosticHudOverlay(
             visible = isExpanded,
             enter = slideInVertically(initialOffsetY = { it / 2 }) + fadeIn(),
             exit = slideOutVertically(targetOffsetY = { it / 2 }) + fadeOut(),
-            modifier = Modifier
-                .fillMaxSize()
-                .pointerInput(Unit) {} // Keep clicks contained when expanded
+            modifier = Modifier.fillMaxSize()
         ) {
             Surface(
                 color = MaterialTheme.colorScheme.background.copy(alpha = 0.98f),
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clickable(
+                        interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                        indication = null,
+                        onClick = {} // Keep clicks contained when expanded
+                    )
             ) {
                 Column(
                     modifier = Modifier
