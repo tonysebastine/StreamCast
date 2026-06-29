@@ -100,17 +100,22 @@ class DiscoveryEngine(private val context: Context) {
             startMdnsDiscovery(service)
         }
 
-        // 2. Start SSDP parallel network worker
+        // 3. Start listening for incoming SSDP UDP unicast responses
         discoveryScope?.launch {
+            listenForSsdpResponses()
+        }
+
+        // 2. Start SSDP parallel network worker (wait for socket binding first)
+        discoveryScope?.launch {
+            // Wait up to 2 seconds for the listening socket to bind
+            for (i in 1..20) {
+                if (ssdpSocket != null) break
+                delay(100)
+            }
             while (isActive) {
                 sendSsdpDiscoveryPackets()
                 delay(8000) // Re-scan every 8 seconds
             }
-        }
-        
-        // 3. Start listening for incoming SSDP UDP unicast responses
-        discoveryScope?.launch {
-            listenForSsdpResponses()
         }
 
         // 4. Start concurrent Subnet Scan for DIAL / ECP devices (ensures robust Gen1+ Fire TV Stick discovery)
@@ -591,6 +596,7 @@ class DiscoveryEngine(private val context: Context) {
 
     private fun scanSubnetForCastingDevices() {
         val prefix = getSubnetPrefix() ?: return
+        val localIp = getLocalIpAddress()
         Log.d(TAG, "Starting subnet scan on prefix: $prefix")
         
         discoveryScope?.launch(Dispatchers.IO) {
@@ -599,7 +605,7 @@ class DiscoveryEngine(private val context: Context) {
                 launch {
                     semaphore.withPermit {
                         val ip = "$prefix$hostId"
-                        if (ip == getLocalIpAddress()) return@withPermit // Skip self
+                        if (ip == localIp) return@withPermit // Skip self
                         
                         // Execute sequential port checks on a single host to avoid multiplexing issues
                         checkPortAndIdentifyDevice(ip, 8008)
