@@ -99,6 +99,12 @@ class UniversalMediaController(private val context: android.content.Context? = n
         .readTimeout(1500, TimeUnit.MILLISECONDS)
         .build()
 
+    private val handlers: Map<ProtocolType, CastProtocolHandler> by lazy {
+        mapOf(
+            ProtocolType.ROKU to RokuCastHandler(okHttpClient)
+        )
+    }
+
     private fun isConnectionFailure(e: Throwable): Boolean {
         return e is java.net.ConnectException ||
                 e is java.net.SocketTimeoutException ||
@@ -192,7 +198,20 @@ class UniversalMediaController(private val context: android.content.Context? = n
                 }
 
                 when (device.protocolType) {
-                    ProtocolType.ROKU -> castToRoku(device, mediaUrl)
+                    ProtocolType.ROKU -> {
+                        val handler = handlers[ProtocolType.ROKU]
+                        if (handler != null) {
+                            handler.connect(device)
+                            val success = handler.castMedia(mediaUrl, title)
+                            if (success) {
+                                _state.value = CastingState.PLAYING
+                            } else {
+                                throw Exception("Roku Cast Handler connection failed")
+                            }
+                        } else {
+                            castToRoku(device, mediaUrl)
+                        }
+                    }
                     ProtocolType.FIRE_TV -> castToFireTV(device, mediaUrl, title)
                     ProtocolType.CHROMECAST -> castToChromecast(device, mediaUrl, title)
                     ProtocolType.AIRPLAY -> castToAirPlay(device, mediaUrl)
@@ -479,7 +498,7 @@ class UniversalMediaController(private val context: android.content.Context? = n
             val movieMetadata = com.google.android.gms.cast.MediaMetadata(com.google.android.gms.cast.MediaMetadata.MEDIA_TYPE_MOVIE)
             movieMetadata.putString(com.google.android.gms.cast.MediaMetadata.KEY_TITLE, title)
 
-            val mimeType = if (url.contains(".m3u8")) "application/x-mpegurl" else "video/mp4"
+            val mimeType = getMimeType(url)
             Log.d(TAG, "Creating MediaInfo object with content URL: $url, mime: $mimeType")
             val mediaInfo = com.google.android.gms.cast.MediaInfo.Builder(url)
                 .setStreamType(com.google.android.gms.cast.MediaInfo.STREAM_TYPE_BUFFERED)
@@ -702,6 +721,26 @@ class UniversalMediaController(private val context: android.content.Context? = n
         }
     }
 
+    private fun getMimeType(url: String): String {
+        val lower = url.lowercase()
+        return when {
+            lower.contains(".m3u8") -> "application/x-mpegURL"
+            lower.contains(".mpd") -> "application/dash+xml"
+            lower.contains(".mp4") -> "video/mp4"
+            lower.contains(".mkv") -> "video/x-matroska"
+            lower.contains(".webm") -> "video/webm"
+            lower.contains(".ogg") -> "video/ogg"
+            lower.contains(".avi") -> "video/x-msvideo"
+            lower.contains(".ts") -> "video/mp2t"
+            lower.contains(".mov") -> "video/quicktime"
+            lower.contains(".3gp") -> "video/3gpp"
+            lower.contains(".mp3") -> "audio/mpeg"
+            lower.contains(".aac") -> "audio/aac"
+            lower.contains(".wav") -> "audio/wav"
+            else -> "video/mp4" // Fallback default
+        }
+    }
+
     private fun escapeXml(value: String): String {
         return value.replace("&", "&amp;")
             .replace("<", "&lt;")
@@ -714,9 +753,11 @@ class UniversalMediaController(private val context: android.content.Context? = n
         val deviceIp = device.ipAddress
         val port = portOverride ?: device.port
         try {
+            val mimeType = getMimeType(url)
             val escapedTitle = escapeXml(title)
             val escapedUrl = escapeXml(url)
-            val didlMetadata = """&lt;DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/"&gt;&lt;item id="0" parentID="-1" restricted="1"&gt;&lt;dc:title&gt;$escapedTitle&lt;/dc:title&gt;&lt;upnp:class&gt;object.item.videoItem&lt;/upnp:class&gt;&lt;res protocolInfo="http-get:*:video/mp4:*"&gt;$escapedUrl&lt;/res&gt;&lt;/item&gt;&lt;/DIDL-Lite&gt;"""
+            val rawDidl = """<DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/"><item id="0" parentID="-1" restricted="1"><dc:title>$escapedTitle</dc:title><upnp:class>object.item.videoItem</upnp:class><res protocolInfo="http-get:*:$mimeType:*">$escapedUrl</res></item></DIDL-Lite>"""
+            val didlMetadata = escapeXml(rawDidl)
 
             // First, prioritize the SSDP discovered location if it matches the target port.
             val locations = mutableListOf<String>()
@@ -1054,11 +1095,20 @@ class UniversalMediaController(private val context: android.content.Context? = n
                         }
                     }
                     ProtocolType.ROKU -> {
-                        // Roku ECP remote key toggle event
-                        val actionKey = if (nextState == CastingState.PLAYING) "Play" else "Pause"
-                        val endpoint = "http://${device.ipAddress}:8060/keypress/$actionKey"
-                        val request = Request.Builder().url(endpoint).post("".toRequestBody()).build()
-                        okHttpClient.newCall(request).execute().close()
+                        val handler = handlers[ProtocolType.ROKU]
+                        if (handler != null) {
+                            if (nextState == CastingState.PLAYING) {
+                                handler.resume()
+                            } else {
+                                handler.pause()
+                            }
+                        } else {
+                            // Roku ECP remote key toggle event
+                            val actionKey = if (nextState == CastingState.PLAYING) "Play" else "Pause"
+                            val endpoint = "http://${device.ipAddress}:8060/keypress/$actionKey"
+                            val request = Request.Builder().url(endpoint).post("".toRequestBody()).build()
+                            okHttpClient.newCall(request).execute().close()
+                        }
                     }
                     ProtocolType.AIRPLAY -> {
                         val rate = if (nextState == CastingState.PLAYING) "1.000000" else "0.000000"
@@ -1188,13 +1238,18 @@ class UniversalMediaController(private val context: android.content.Context? = n
                             remoteMediaClient?.seek(positionMs)
                         }
                     } else if (device.protocolType == ProtocolType.ROKU) {
-                        // Roku supports seek command via launch contentId parameter, or deep-link position:
-                        // /launch/dev?contentId=...&position=<seconds>
-                        val encodedUrl = java.net.URLEncoder.encode(_currentUrl.value, "UTF-8")
-                        val seconds = positionMs / 1000
-                        val endpoint = "http://${device.ipAddress}:8060/launch/dev?contentId=$encodedUrl&position=$seconds"
-                        val request = Request.Builder().url(endpoint).post("".toRequestBody()).build()
-                        okHttpClient.newCall(request).execute().close()
+                        val handler = handlers[ProtocolType.ROKU]
+                        if (handler != null) {
+                            handler.seekTo(positionMs)
+                        } else {
+                            // Roku supports seek command via launch contentId parameter, or deep-link position:
+                            // /launch/dev?contentId=...&position=<seconds>
+                            val encodedUrl = java.net.URLEncoder.encode(_currentUrl.value, "UTF-8")
+                            val seconds = positionMs / 1000
+                            val endpoint = "http://${device.ipAddress}:8060/launch/dev?contentId=$encodedUrl&position=$seconds"
+                            val request = Request.Builder().url(endpoint).post("".toRequestBody()).build()
+                            okHttpClient.newCall(request).execute().close()
+                        }
                     } else if (device.protocolType == ProtocolType.AIRPLAY) {
                         val seconds = positionMs.toFloat() / 1000f
                         val endpoint = "http://${device.ipAddress}:7000/scrub?position=$seconds"
@@ -1254,12 +1309,17 @@ class UniversalMediaController(private val context: android.content.Context? = n
                             currentSession?.volume = clamped.toDouble() / 100.0
                         }
                     } else if (device.protocolType == ProtocolType.ROKU) {
-                        // Roku supports discrete ECP volume steps: VolumeUp / VolumeDown key presses
-                        val currentVol = _volume.value
-                        val actionKey = if (clamped > currentVol) "VolumeUp" else "VolumeDown"
-                        val endpoint = "http://${device.ipAddress}:8060/keypress/$actionKey"
-                        val request = Request.Builder().url(endpoint).post("".toRequestBody()).build()
-                        okHttpClient.newCall(request).execute().close()
+                        val handler = handlers[ProtocolType.ROKU]
+                        if (handler != null) {
+                            handler.setVolume(clamped)
+                        } else {
+                            // Roku supports discrete ECP volume steps: VolumeUp / VolumeDown key presses
+                            val currentVol = _volume.value
+                            val actionKey = if (clamped > currentVol) "VolumeUp" else "VolumeDown"
+                            val endpoint = "http://${device.ipAddress}:8060/keypress/$actionKey"
+                            val request = Request.Builder().url(endpoint).post("".toRequestBody()).build()
+                            okHttpClient.newCall(request).execute().close()
+                        }
                     } else if (device.protocolType == ProtocolType.AIRPLAY) {
                         val volumeFactor = clamped.toFloat() / 100f
                         val endpoint = "http://${device.ipAddress}:7000/volume?value=$volumeFactor"
@@ -1317,10 +1377,15 @@ class UniversalMediaController(private val context: android.content.Context? = n
                             }
                         }
                         ProtocolType.ROKU -> {
-                            // Roku ECP remote key Home exits playback
-                            val endpoint = "http://${device.ipAddress}:8060/keypress/Home"
-                            val request = Request.Builder().url(endpoint).post("".toRequestBody()).build()
-                            okHttpClient.newCall(request).execute().close()
+                            val handler = handlers[ProtocolType.ROKU]
+                            if (handler != null) {
+                                handler.stop()
+                            } else {
+                                // Roku ECP remote key Home exits playback
+                                val endpoint = "http://${device.ipAddress}:8060/keypress/Home"
+                                val request = Request.Builder().url(endpoint).post("".toRequestBody()).build()
+                                okHttpClient.newCall(request).execute().close()
+                            }
                         }
                         ProtocolType.AIRPLAY -> {
                             val endpoint = "http://${device.ipAddress}:7000/stop"

@@ -45,6 +45,10 @@ data class SniffedVideo(
 class CastWebBridge(private val onVideoFound: (SniffedVideo) -> Unit) {
     @JavascriptInterface
     fun onVideoSniffed(url: String, title: String) {
+        val lowerUrl = url.lowercase().trim()
+        if (!lowerUrl.startsWith("http://") && !lowerUrl.startsWith("https://")) {
+            return // ignore non-web formats like file:// and content://
+        }
         val snippetName = if (title.trim().isEmpty() || title == "undefined") "Discovered Video Stream" else title
         onVideoFound(SniffedVideo(url = url, title = snippetName))
     }
@@ -310,6 +314,31 @@ fun WebSnifferBrowser(
             }
         }
 
+@Composable
+fun FormatBadge(format: String) {
+    val (bgColor, textColor) = when {
+        format.contains("HLS", ignoreCase = true) || format.contains("m3u8", ignoreCase = true) -> Pair(Color(0xFFE3F2FD), Color(0xFF1E88E5)) // Blue
+        format.contains("MP4", ignoreCase = true) -> Pair(Color(0xFFE8F5E9), Color(0xFF43A047)) // Green
+        format.contains("MP3", ignoreCase = true) || format.contains("audio", ignoreCase = true) -> Pair(Color(0xFFFFF3E0), Color(0xFFFB8C00)) // Orange
+        format.contains("DASH", ignoreCase = true) || format.contains("mpd", ignoreCase = true) -> Pair(Color(0xFFF3E5F5), Color(0xFF8E24AA)) // Purple
+        else -> Pair(Color(0xFFECEFF1), Color(0xFF546E7A)) // Grey
+    }
+    Box(
+        modifier = Modifier
+            .padding(end = 6.dp)
+            .clip(RoundedCornerShape(4.dp))
+            .background(bgColor)
+            .padding(horizontal = 6.dp, vertical = 2.dp)
+    ) {
+        Text(
+            text = format.replace(" .m3u8", "").replace(" .mpd", "").uppercase(),
+            color = textColor,
+            fontSize = 9.sp,
+            fontWeight = FontWeight.Bold
+        )
+    }
+}
+
         // Live Sniffed Video Drawer / Ribbon
         if (sniffedVideos.isNotEmpty()) {
             Card(
@@ -317,7 +346,7 @@ fun WebSnifferBrowser(
                 shape = RoundedCornerShape(8.dp),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 140.dp)
+                    .heightIn(max = 240.dp)
                     .padding(8.dp)
             ) {
                 LazyColumn(
@@ -325,47 +354,62 @@ fun WebSnifferBrowser(
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     items(sniffedVideos) { video ->
-                        Row(
+                        OutlinedCard(
+                            colors = CardDefaults.outlinedCardColors(
+                                containerColor = MaterialTheme.colorScheme.surface
+                            ),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(MaterialTheme.colorScheme.surface)
-                                .clickable { onVideoSelectedForCasting(video) }
-                                .padding(8.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                                .padding(vertical = 4.dp)
                         ) {
-                            Icon(
-                                Icons.Default.Tv,
-                                contentDescription = "Cast stream",
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(20.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = video.title,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                Text(
-                                    text = video.url,
-                                    fontSize = 10.sp,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Button(
-                                onClick = { onVideoSelectedForCasting(video) },
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp),
-                                modifier = Modifier.height(28.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text("Cast", fontSize = 11.sp)
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        val format = getFormatLabel(video.url)
+                                        FormatBadge(format)
+                                        Text(
+                                            text = video.title,
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = video.url,
+                                        fontSize = 11.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Button(
+                                    onClick = { onVideoSelectedForCasting(video) },
+                                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                                    modifier = Modifier.height(36.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Tv,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Text("Cast", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
                             }
                         }
                     }
@@ -446,12 +490,15 @@ fun WebSnifferBrowser(
                             return false // Open inside the same in-app Web view
                         }
 
-                        override fun shouldInterceptRequest(
+                         override fun shouldInterceptRequest(
                             view: WebView?,
                             request: WebResourceRequest?
                         ): android.webkit.WebResourceResponse? {
                             request?.url?.toString()?.let { reqUrl ->
-                                val lowerUrl = reqUrl.lowercase()
+                                val lowerUrl = reqUrl.lowercase().trim()
+                                if (!lowerUrl.startsWith("http://") && !lowerUrl.startsWith("https://")) {
+                                    return super.shouldInterceptRequest(view, request) // ignore non-web formats
+                                }
                                 val isStream = lowerUrl.contains(".m3u8") || 
                                                lowerUrl.contains(".mp4") || 
                                                lowerUrl.contains(".mpd") || 

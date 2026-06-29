@@ -26,16 +26,11 @@ import java.io.IOException
  */
 class UpdateCheckService : Service() {
 
-    private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-    private var periodicJob: Job? = null
-    private val okHttpClient = OkHttpClient()
-
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
         super.onCreate()
         Log.i(TAG, "UpdateCheckService created")
-        createNotificationChannel()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -48,209 +43,46 @@ class UpdateCheckService : Service() {
             }
             ACTION_STOP -> {
                 stopPeriodicCheck()
-                stopSelf()
             }
             ACTION_CHECK_NOW -> {
-                serviceScope.launch {
-                    runUpdateCheck(forceNotify = true)
-                }
+                val inputData = androidx.work.Data.Builder().putBoolean("forceNotify", true).build()
+                val workRequest = androidx.work.OneTimeWorkRequestBuilder<UpdateCheckWorker>()
+                    .setInputData(inputData)
+                    .build()
+                androidx.work.WorkManager.getInstance(applicationContext).enqueue(workRequest)
             }
         }
 
-        return START_STICKY
+        // Stop the service immediately to keep resources free
+        stopSelf()
+        return START_NOT_STICKY
     }
 
     private fun startPeriodicCheck() {
-        // Cancel any existing job to ensure new SharedPreferences configuration (e.g. interval change) is applied immediately
-        periodicJob?.cancel()
-
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val intervalMinutes = prefs.getLong(PREF_INTERVAL_MINUTES, DEFAULT_INTERVAL_MINUTES)
-        val intervalMs = intervalMinutes * 60 * 1000
+        val checkedInterval = intervalMinutes.coerceAtLeast(15L)
 
-        Log.i(TAG, "Starting periodic update check every $intervalMinutes minutes")
-        periodicJob = serviceScope.launch {
-            while (isActive) {
-                runUpdateCheck(forceNotify = false)
-                delay(intervalMs)
-            }
-        }
+        Log.i(TAG, "Enqueuing periodic WorkManager update check every $checkedInterval minutes")
+
+        val workRequest = androidx.work.PeriodicWorkRequestBuilder<UpdateCheckWorker>(
+            checkedInterval, java.util.concurrent.TimeUnit.MINUTES
+        ).build()
+
+        androidx.work.WorkManager.getInstance(applicationContext).enqueueUniquePeriodicWork(
+            "AppUpdateChecker",
+            androidx.work.ExistingPeriodicWorkPolicy.UPDATE,
+            workRequest
+        )
     }
 
     private fun stopPeriodicCheck() {
-        Log.i(TAG, "Stopping periodic update check")
-        periodicJob?.cancel()
-        periodicJob = null
-    }
-
-    private suspend fun runUpdateCheck(forceNotify: Boolean) {
-        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val isSimulationMode = prefs.getBoolean(PREF_SIMULATION_MODE, false)
-        val manifestUrl = prefs.getString(PREF_MANIFEST_URL, DEFAULT_MANIFEST_URL) ?: DEFAULT_MANIFEST_URL
-
-        Log.d(TAG, "Running update check. SimulationMode=$isSimulationMode, URL=$manifestUrl")
-
-        if (isSimulationMode) {
-            // Trigger a simulated update notification immediately for demonstration/QA
-            Log.i(TAG, "Simulating app update available!")
-            showUpdateNotification(
-                newVersionName = "1.5-Simulated",
-                newVersionCode = 5,
-                releaseNotes = "This is a simulated update demonstrating notification delivery and background checking.",
-                updateUrl = "https://github.com/tonysebastine/StreamCast"
-            )
-            // Broadcast result to UI if listening
-            broadcastUpdateResult(true, "1.5-Simulated", "Simulated updates available!")
-            return
-        }
-
-        try {
-            val sanitizedUrl = manifestUrl.trim()
-            val targetUrl = sanitizedUrl.toHttpUrlOrNull()
-                ?: throw IllegalArgumentException("Malformed update URL syntax: $sanitizedUrl")
-
-            var request = Request.Builder().url(targetUrl).build()
-            var response = okHttpClient.newCall(request).execute()
-
-            // Robust fallback: if checking the default URL on main branch fails (e.g. 404 or 400), retry with master branch
-            if (!response.isSuccessful && (sanitizedUrl == DEFAULT_MANIFEST_URL || sanitizedUrl == DEFAULT_MANIFEST_URL.trim())) {
-                val responseCode = response.code
-                response.close()
-                val fallbackUrl = FALLBACK_MASTER_URL.trim()
-                Log.w(TAG, "Manifest request returned status $responseCode on main. Retrying with master fallback URL: $fallbackUrl")
-                val parsedFallbackUrl = fallbackUrl.toHttpUrlOrNull()
-                    ?: throw IllegalArgumentException("Malformed fallback update URL syntax: $fallbackUrl")
-                request = Request.Builder().url(parsedFallbackUrl).build()
-                response = okHttpClient.newCall(request).execute()
-            }
-
-            response.use { resp ->
-                if (!resp.isSuccessful) {
-                    val errorMsg = "Update server returned HTTP ${resp.code}. If you have not yet pushed 'app-update-manifest.json' to your GitHub repository '${manifestUrl}', this is expected and safe."
-                    Log.w(TAG, errorMsg)
-                    broadcastUpdateResult(false, "", "Update check unavailable (HTTP ${resp.code})")
-                    return
-                }
-
-                val body = resp.body?.string()
-                if (body.isNullOrEmpty()) {
-                    val errorMsg = "Empty response body from manifest server"
-                    Log.w(TAG, errorMsg)
-                    broadcastUpdateResult(false, "", errorMsg)
-                    return
-                }
-
-                Log.d(TAG, "Successfully fetched manifest: $body")
-                val json = JSONObject(body)
-                val serverVersionCode = json.optInt("versionCode", 0)
-                val serverVersionName = json.optString("versionName", "1.0")
-                val updateUrl = json.optString("updateUrl", "")
-                val releaseNotes = json.optString("releaseNotes", "New performance enhancements and bug fixes.")
-
-                val currentVersionCode = getCurrentVersionCode()
-                Log.d(TAG, "Version comparison: ServerCode=$serverVersionCode, CurrentCode=$currentVersionCode")
-
-                if (serverVersionCode > currentVersionCode) {
-                    Log.i(TAG, "Newer version detected on server: $serverVersionName ($serverVersionCode)")
-                    showUpdateNotification(serverVersionName, serverVersionCode, releaseNotes, updateUrl)
-                    broadcastUpdateResult(true, serverVersionName, "Version $serverVersionName is available!")
-                } else {
-                    Log.d(TAG, "App is up to date.")
-                    broadcastUpdateResult(false, serverVersionName, "App is already up to date.")
-                }
-            }
-        } catch (e: IOException) {
-            val errorMsg = "Failed to connect to manifest server: ${e.message}"
-            Log.e(TAG, errorMsg)
-            broadcastUpdateResult(false, "", errorMsg)
-        } catch (e: Exception) {
-            val errorMsg = "Error during update check: ${e.message}"
-            Log.e(TAG, errorMsg, e)
-            broadcastUpdateResult(false, "", errorMsg)
-        }
-    }
-
-    private fun getCurrentVersionCode(): Int {
-        return try {
-            val packageInfo = packageManager.getPackageInfo(packageName, 0)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                (packageInfo.longVersionCode and 0xFFFFFFFFL).toInt()
-            } else {
-                @Suppress("DEPRECATION")
-                packageInfo.versionCode
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error fetching current version code: ${e.message}")
-            1
-        }
-    }
-
-    private fun showUpdateNotification(
-        newVersionName: String,
-        newVersionCode: Int,
-        releaseNotes: String,
-        updateUrl: String
-    ) {
-        val intent = if (updateUrl.isNotEmpty()) {
-            Intent(Intent.ACTION_VIEW, Uri.parse(updateUrl))
-        } else {
-            packageManager.getLaunchIntentForPackage(packageName)
-        }
-
-        val pendingIntent = PendingIntent.getActivity(
-            this,
-            0,
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.stat_sys_download_done)
-            .setContentTitle("StreamCast Update Available (v$newVersionName)")
-            .setContentText("A new update is available. Tap to upgrade now.")
-            .setStyle(NotificationCompat.BigTextStyle()
-                .bigText("Version $newVersionName introduces key updates:\n$releaseNotes\n\nTap this notification to download and install."))
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setCategory(NotificationCompat.CATEGORY_RECOMMENDATION)
-            .setContentIntent(pendingIntent)
-            .setAutoCancel(true)
-            .build()
-
-        try {
-            NotificationManagerCompat.from(this).notify(NOTIFICATION_ID, notification)
-            Log.d(TAG, "Notification posted successfully")
-        } catch (e: SecurityException) {
-            Log.e(TAG, "Failed to post notification: missing POST_NOTIFICATIONS permission. ${e.message}")
-        }
-    }
-
-    private fun createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val name = "App Updates"
-            val descriptionText = "Notifications when a newer app update is available."
-            val importance = NotificationManager.IMPORTANCE_DEFAULT
-            val channel = NotificationChannel(CHANNEL_ID, name, importance).apply {
-                description = descriptionText
-            }
-            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            notificationManager.createNotificationChannel(channel)
-            Log.d(TAG, "Created notification channel: $CHANNEL_ID")
-        }
-    }
-
-    private fun broadcastUpdateResult(updateAvailable: Boolean, serverVersion: String, statusMessage: String) {
-        val intent = Intent(ACTION_UPDATE_RESULT).apply {
-            putExtra(EXTRA_UPDATE_AVAILABLE, updateAvailable)
-            putExtra(EXTRA_SERVER_VERSION, serverVersion)
-            putExtra(EXTRA_STATUS_MESSAGE, statusMessage)
-            setPackage(packageName)
-        }
-        sendBroadcast(intent)
+        Log.i(TAG, "Cancelling periodic WorkManager update check")
+        androidx.work.WorkManager.getInstance(applicationContext).cancelUniqueWork("AppUpdateChecker")
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        serviceScope.cancel()
         Log.i(TAG, "UpdateCheckService destroyed")
     }
 

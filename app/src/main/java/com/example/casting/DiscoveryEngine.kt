@@ -86,6 +86,16 @@ class DiscoveryEngine(private val context: Context) {
         activeDevicesMap.clear()
         _devices.value = emptyList()
 
+        // Bind SSDP socket synchronously before launching broadcasts to prevent race conditions
+        try {
+            ssdpSocket = DatagramSocket().apply {
+                soTimeout = 0
+            }
+            Log.d(TAG, "SSDP socket bound synchronously on port ${ssdpSocket?.localPort}")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to bind SSDP socket synchronously: ${e.message}")
+        }
+
         // 1. Start mDNS scan for multiple casting services
         val mDnsServicesToScan = listOf(
             "_googlecast._tcp",
@@ -100,17 +110,17 @@ class DiscoveryEngine(private val context: Context) {
             startMdnsDiscovery(service)
         }
 
-        // 2. Start SSDP parallel network worker
+        // 2. Start listening for incoming SSDP UDP unicast responses FIRST
+        discoveryScope?.launch {
+            listenForSsdpResponses()
+        }
+
+        // 3. Start SSDP parallel network worker to broadcast (ensuring socket is already listening)
         discoveryScope?.launch {
             while (isActive) {
                 sendSsdpDiscoveryPackets()
                 delay(8000) // Re-scan every 8 seconds
             }
-        }
-        
-        // 3. Start listening for incoming SSDP UDP unicast responses
-        discoveryScope?.launch {
-            listenForSsdpResponses()
         }
 
         // 4. Start concurrent Subnet Scan for DIAL / ECP devices (ensures robust Gen1+ Fire TV Stick discovery)
@@ -405,17 +415,20 @@ class DiscoveryEngine(private val context: Context) {
     }
 
     private fun CoroutineScope.listenForSsdpResponses() {
-        var socket: DatagramSocket? = null
+        val socket = ssdpSocket ?: try {
+            DatagramSocket().apply {
+                soTimeout = 0
+            }.also { ssdpSocket = it }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to bind SSDP socket in listener: ${e.message}")
+            return
+        }
+        
         try {
-            socket = DatagramSocket().apply {
-                soTimeout = 0 // block wait
-            }
-            ssdpSocket = socket
-            
             val buffer = ByteArray(2048)
             Log.d(TAG, "SSDP UDP Response Listener active on port ${socket.localPort}")
 
-            while (isActive) {
+            while (isActive && !socket.isClosed) {
                 val packet = DatagramPacket(buffer, buffer.size)
                 try {
                     socket.receive(packet)
@@ -430,7 +443,7 @@ class DiscoveryEngine(private val context: Context) {
         } catch (e: Exception) {
             Log.e(TAG, "SSDP response receiver crashes: ${e.message}")
         } finally {
-            socket?.close()
+            try { socket.close() } catch (e: Exception) {}
             if (ssdpSocket == socket) {
                 ssdpSocket = null
             }
@@ -591,6 +604,7 @@ class DiscoveryEngine(private val context: Context) {
 
     private fun scanSubnetForCastingDevices() {
         val prefix = getSubnetPrefix() ?: return
+        val localIp = getLocalIpAddress()
         Log.d(TAG, "Starting subnet scan on prefix: $prefix")
         
         discoveryScope?.launch(Dispatchers.IO) {
@@ -599,7 +613,7 @@ class DiscoveryEngine(private val context: Context) {
                 launch {
                     semaphore.withPermit {
                         val ip = "$prefix$hostId"
-                        if (ip == getLocalIpAddress()) return@withPermit // Skip self
+                        if (ip == localIp) return@withPermit // Skip self
                         
                         // Execute sequential port checks on a single host to avoid multiplexing issues
                         checkPortAndIdentifyDevice(ip, 8008)
@@ -620,7 +634,7 @@ class DiscoveryEngine(private val context: Context) {
             var socket: Socket? = null
             try {
                 socket = Socket()
-                socket.connect(InetSocketAddress(ip, port), 1500) // 1500ms timeout
+                socket.connect(InetSocketAddress(ip, port), 800) // 800ms timeout
                 Log.d(TAG, "Found active port $port on $ip")
                 
                 if (port == 8008 || port == 8009) {

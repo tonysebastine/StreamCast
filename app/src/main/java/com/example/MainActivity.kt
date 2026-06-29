@@ -6,7 +6,7 @@ import android.os.Bundle
 import android.provider.OpenableColumns
 import com.example.AppLogger as Log
 import android.widget.Toast
-import androidx.activity.ComponentActivity
+import androidx.appcompat.app.AppCompatActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -96,8 +96,11 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.mediarouter.app.MediaRouteButton
 import com.google.android.gms.cast.framework.CastButtonFactory
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.material.icons.filled.TouchApp
 
-class MainActivity : ComponentActivity() {
+class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Log.i("System", "StreamCast initialized cleanly. Android SDK ${android.os.Build.VERSION.SDK_INT}")
@@ -146,7 +149,11 @@ fun CastIconButton(modifier: Modifier = Modifier) {
     AndroidView(
         modifier = modifier.size(32.dp),
         factory = { context ->
-            MediaRouteButton(context).apply {
+            val themedContext = androidx.appcompat.view.ContextThemeWrapper(
+                context,
+                androidx.appcompat.R.style.Theme_AppCompat_NoActionBar
+            )
+            MediaRouteButton(themedContext).apply {
                 CastButtonFactory.setUpMediaRouteButton(context.applicationContext, this)
             }
         }
@@ -4436,6 +4443,80 @@ fun ClientControllerCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
+
+            if (activeCastDevice != null) {
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                var dragOffsetHorizontal by remember { mutableStateOf(0f) }
+                var dragOffsetVertical by remember { mutableStateOf(0f) }
+                
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(110.dp)
+                        .pointerInput(Unit) {
+                            detectDragGestures(
+                                onDragStart = {
+                                    dragOffsetHorizontal = 0f
+                                    dragOffsetVertical = 0f
+                                },
+                                onDrag = { change, dragAmount ->
+                                    change.consume()
+                                    dragOffsetHorizontal += dragAmount.x
+                                    dragOffsetVertical += dragAmount.y
+                                    
+                                    // horizontal seek: threshold of 30px
+                                    if (java.lang.Math.abs(dragOffsetHorizontal) > 30f) {
+                                        val seekAmount = (dragOffsetHorizontal / 4f).toLong() * 1000L // 1 second per 4 pixels
+                                        val newPos = (castPosition + seekAmount).coerceIn(0L, castDuration)
+                                        viewModel.mediaController.seekTo(newPos)
+                                        dragOffsetHorizontal = 0f // Reset relative anchor to prevent continuous runaway
+                                    }
+                                    
+                                    // vertical volume: threshold of 30px
+                                    if (java.lang.Math.abs(dragOffsetVertical) > 30f) {
+                                        val volAmount = -(dragOffsetVertical / 8f).toInt() // invert vertical drag for volume (up is positive)
+                                        val newVol = (castVolume + volAmount).coerceIn(0, 100)
+                                        viewModel.mediaController.setVolume(newVol)
+                                        dragOffsetVertical = 0f // Reset relative anchor
+                                    }
+                                }
+                            )
+                        }
+                ) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(
+                                imageVector = Icons.Default.TouchApp,
+                                contentDescription = "Swipe Gesture Pad",
+                                tint = activeBrandColor.copy(alpha = 0.7f),
+                                modifier = Modifier.size(28.dp)
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = "SWIPE GESTURE CONTROLLER",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    letterSpacing = 1.sp
+                                )
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "Swipe ↔ to Seek | Swipe ↕ to Adjust Volume",
+                                fontSize = 10.sp,
+                                color = MaterialTheme.colorScheme.outline
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -5740,6 +5821,18 @@ fun StreamCastDashboardResponsive(
     val logsList by com.example.AppLogger.logs.collectAsStateWithLifecycle(initialValue = emptyList())
     val secureCastError by viewModel.mediaController.error.collectAsStateWithLifecycle()
 
+    val bookmarks by viewModel.bookmarks.collectAsStateWithLifecycle()
+    val castHistory by viewModel.castHistory.collectAsStateWithLifecycle()
+    
+    var activeBrowserUrl by remember { mutableStateOf("https://archive.org/details/classic_cartoons") }
+    var searchQuery by remember { mutableStateOf("") }
+    val manualDevices = remember { mutableStateListOf<CastingDevice>() }
+
+    val filteredCastHistory = remember(castHistory, searchQuery) {
+        if (searchQuery.isBlank()) castHistory
+        else castHistory.filter { it.title.contains(searchQuery, ignoreCase = true) || it.url.contains(searchQuery, ignoreCase = true) }
+    }
+
     LaunchedEffect(secureCastError) {
         val err = secureCastError
         if (err is com.example.casting.CastingError.SecureCastRequired) {
@@ -5760,7 +5853,7 @@ fun StreamCastDashboardResponsive(
     
     val scope = rememberCoroutineScope()
     var selectedTab by remember { mutableIntStateOf(0) }
-    var isSmartIslandEnabled by remember { mutableStateOf(true) }
+    var isSmartIslandEnabled by remember { mutableStateOf(isOriginOsDevice()) }
     var isSmartIslandExpanded by remember { mutableStateOf(false) }
     var expandedReleaseVersion by remember { mutableStateOf("1.2") }
 
@@ -5855,13 +5948,6 @@ fun StreamCastDashboardResponsive(
             isSmartIslandExpanded = false
         }
     }
-    
-    val bookmarks by viewModel.bookmarks.collectAsStateWithLifecycle()
-    val castHistory by viewModel.castHistory.collectAsStateWithLifecycle()
-    
-    var activeBrowserUrl by remember { mutableStateOf("https://archive.org/details/classic_cartoons") }
-    var searchQuery by remember { mutableStateOf("") }
-    val manualDevices = remember { mutableStateListOf<CastingDevice>() }
     
     val isAnalyzing by viewModel.isAnalyzing.collectAsStateWithLifecycle()
     val diagnosticAnalysis by viewModel.diagnosticAnalysis.collectAsStateWithLifecycle()
@@ -5959,32 +6045,45 @@ fun StreamCastDashboardResponsive(
                 )
             },
             bottomBar = {
-                // Screen switching tab selector
-                NavigationBar(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .windowInsetsPadding(WindowInsets.navigationBars)
-                        .testTag("app_navigation_bar"),
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant
-                ) {
-                    NavigationBarItem(
-                        selected = selectedTab == 0,
-                        onClick = { selectedTab = 0 },
-                        icon = { Icon(Icons.Default.Wifi, contentDescription = "Devices tab") },
-                        label = { Text("Scanner", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
-                    )
-                    NavigationBarItem(
-                        selected = selectedTab == 1,
-                        onClick = { selectedTab = 1 },
-                        icon = { Icon(Icons.Default.Language, contentDescription = "Browser tab") },
-                        label = { Text("Web Video", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
-                    )
-                    NavigationBarItem(
-                        selected = selectedTab == 2,
-                        onClick = { selectedTab = 2 },
-                        icon = { Icon(Icons.Default.Info, contentDescription = "Remote & Help Tab") },
-                        label = { Text("Remote & Help", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
-                    )
+                Column {
+                    if (!isSmartIslandEnabled && currentCastingState != CastingState.IDLE) {
+                        PersistentMiniPlayer(
+                            state = currentCastingState,
+                            title = castTitle,
+                            position = castPosition,
+                            duration = castDuration,
+                            onTogglePlayPause = { viewModel.mediaController.togglePlayPause() },
+                            onSeek = { pos -> viewModel.mediaController.seekTo(pos) },
+                            onStop = { viewModel.mediaController.stopCasting() }
+                        )
+                    }
+                    // Screen switching tab selector
+                    NavigationBar(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .windowInsetsPadding(WindowInsets.navigationBars)
+                            .testTag("app_navigation_bar"),
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant
+                    ) {
+                        NavigationBarItem(
+                            selected = selectedTab == 0,
+                            onClick = { selectedTab = 0 },
+                            icon = { Icon(Icons.Default.Wifi, contentDescription = "Devices tab") },
+                            label = { Text("Scanner", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                        )
+                        NavigationBarItem(
+                            selected = selectedTab == 1,
+                            onClick = { selectedTab = 1 },
+                            icon = { Icon(Icons.Default.Language, contentDescription = "Browser tab") },
+                            label = { Text("Web Video", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                        )
+                        NavigationBarItem(
+                            selected = selectedTab == 2,
+                            onClick = { selectedTab = 2 },
+                            icon = { Icon(Icons.Default.Info, contentDescription = "Remote & Help Tab") },
+                            label = { Text("Remote & Help", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                        )
+                    }
                 }
             }
         ) { innerPadding ->
@@ -6116,12 +6215,12 @@ fun StreamCastDashboardResponsive(
                                         if (castHistory.isNotEmpty()) {
                                             Spacer(modifier = Modifier.height(8.dp))
                                             Text(
-                                                text = "Cast History Log (${castHistory.size})",
+                                                text = if (searchQuery.isBlank()) "Cast History Log (${castHistory.size})" else "Cast History Log (${filteredCastHistory.size} matches)",
                                                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                                                 color = MaterialTheme.colorScheme.onBackground
                                             )
 
-                                            castHistory.forEach { item ->
+                                            filteredCastHistory.forEach { item ->
                                                 CastHistoryRowItem(
                                                     item = item,
                                                     onDelete = { viewModel.removeHistoryItem(item.id) }
@@ -6384,17 +6483,28 @@ fun StreamCastDashboardResponsive(
                                             item {
                                                 Spacer(modifier = Modifier.height(8.dp))
                                                 Text(
-                                                    text = "Cast History Log (${castHistory.size})",
+                                                    text = if (searchQuery.isBlank()) "Cast History Log (${castHistory.size})" else "Cast History Log (${filteredCastHistory.size} matches)",
                                                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                                                     color = MaterialTheme.colorScheme.onBackground
                                                 )
                                             }
 
-                                            items(castHistory) { item ->
-                                                CastHistoryRowItem(
-                                                    item = item,
-                                                    onDelete = { viewModel.removeHistoryItem(item.id) }
-                                                )
+                                            if (filteredCastHistory.isEmpty() && searchQuery.isNotBlank()) {
+                                                item {
+                                                    Text(
+                                                        text = "No matching history logs",
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        color = MaterialTheme.colorScheme.outline,
+                                                        modifier = Modifier.padding(vertical = 8.dp)
+                                                    )
+                                                }
+                                            } else {
+                                                items(filteredCastHistory) { item ->
+                                                    CastHistoryRowItem(
+                                                        item = item,
+                                                        onDelete = { viewModel.removeHistoryItem(item.id) }
+                                                    )
+                                                }
                                             }
                                         }
                                     }
@@ -6563,6 +6673,144 @@ fun StreamCastDashboardResponsive(
             activeCastDevice = activeCastDevice,
             onTriggerScan = { viewModel.startDeviceScanning() }
         )
+    }
+}
+
+fun isOriginOsDevice(): Boolean {
+    val manufacturer = Build.MANUFACTURER?.lowercase() ?: ""
+    val brand = Build.BRAND?.lowercase() ?: ""
+    return manufacturer.contains("vivo") || manufacturer.contains("iqoo") ||
+           brand.contains("vivo") || brand.contains("iqoo") ||
+           System.getProperty("ro.vivo.os.name")?.lowercase()?.contains("origin") == true
+}
+
+@Composable
+fun PersistentMiniPlayer(
+    state: CastingState,
+    title: String,
+    position: Long,
+    duration: Long,
+    onTogglePlayPause: () -> Unit,
+    onSeek: (Long) -> Unit,
+    onStop: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        modifier = modifier
+            .fillMaxWidth()
+            .testTag("persistent_mini_player")
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Tv,
+                        contentDescription = "Active Cast Session Indicator",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column {
+                        Text(
+                            text = if (title.isBlank()) "Streaming Media Asset" else title,
+                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = if (state == CastingState.PLAYING) "Playing" else "Paused",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    IconButton(
+                        onClick = onTogglePlayPause,
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (state == CastingState.PLAYING) Icons.Default.Pause else Icons.Default.PlayArrow,
+                            contentDescription = "Toggle play pause",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                    IconButton(
+                        onClick = onStop,
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Stop casting session",
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+            }
+            
+            Spacer(modifier = Modifier.height(6.dp))
+            
+            val durationFloat = duration.toFloat()
+            val positionFloat = position.toFloat().coerceIn(0f, durationFloat.coerceAtLeast(1f))
+            
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = formatDuration(position),
+                    fontSize = 10.sp,
+                    color = MaterialTheme.colorScheme.outline,
+                    modifier = Modifier.width(36.dp)
+                )
+                
+                Slider(
+                    value = positionFloat,
+                    onValueChange = { onSeek(it.toLong()) },
+                    valueRange = 0f..durationFloat.coerceAtLeast(1f),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(18.dp),
+                    colors = SliderDefaults.colors(
+                        thumbColor = MaterialTheme.colorScheme.primary,
+                        activeTrackColor = MaterialTheme.colorScheme.primary,
+                        inactiveTrackColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f)
+                    )
+                )
+                
+                Spacer(modifier = Modifier.width(4.dp))
+                
+                Text(
+                    text = formatDuration(duration),
+                    fontSize = 10.sp,
+                    color = MaterialTheme.colorScheme.outline,
+                    modifier = Modifier.width(36.dp),
+                    textAlign = TextAlign.End
+                )
+            }
+        }
     }
 }
 
