@@ -716,21 +716,7 @@ class UniversalMediaController(private val context: android.content.Context? = n
         try {
             val escapedTitle = escapeXml(title)
             val escapedUrl = escapeXml(url)
-            val mimeType = if (url.contains(".m3u8", ignoreCase = true)) {
-                "application/x-mpegURL"
-            } else if (url.contains(".mpd", ignoreCase = true)) {
-                "application/dash+xml"
-            } else if (url.contains(".webm", ignoreCase = true)) {
-                "video/webm"
-            } else if (url.contains(".3gp", ignoreCase = true)) {
-                "video/3gpp"
-            } else if (url.contains(".mkv", ignoreCase = true)) {
-                "video/x-matroska"
-            } else {
-                "video/mp4"
-            }
-            val rawDidl = """<DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/"><item id="0" parentID="-1" restricted="1"><dc:title>$escapedTitle</dc:title><upnp:class>object.item.videoItem</upnp:class><res protocolInfo="http-get:*:$mimeType:*">$escapedUrl</res></item></DIDL-Lite>"""
-            val didlMetadata = escapeXml(rawDidl)
+            val didlMetadata = """&lt;DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/"&gt;&lt;item id="0" parentID="-1" restricted="1"&gt;&lt;dc:title&gt;$escapedTitle&lt;/dc:title&gt;&lt;upnp:class&gt;object.item.videoItem&lt;/upnp:class&gt;&lt;res protocolInfo="http-get:*:video/mp4:*"&gt;$escapedUrl&lt;/res&gt;&lt;/item&gt;&lt;/DIDL-Lite&gt;"""
 
             // First, prioritize the SSDP discovered location if it matches the target port.
             val locations = mutableListOf<String>()
@@ -999,7 +985,7 @@ class UniversalMediaController(private val context: android.content.Context? = n
                                 e.message?.contains("timeout", ignoreCase = true) == true ||
                                 e.message?.contains("connect", ignoreCase = true) == true ||
                                 e.message?.contains("route", ignoreCase = true) == true ||
-                                (e.message?.contains("exhausted", ignoreCase = true) == true && e.message?.contains("fallbacks", ignoreCase = true) == false) ||
+                                e.message?.contains("exhausted", ignoreCase = true) == true ||
                                 e.message?.contains("failed to connect", ignoreCase = true) == true
 
         // Deploy Virtual Bridge mode on BOTH emulator/sandbox and physical devices when a local connection issue / isolation is detected

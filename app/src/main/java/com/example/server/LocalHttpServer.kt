@@ -16,22 +16,19 @@ import java.util.concurrent.Executors
 class LocalHttpServer(private val context: Context, val port: Int = 8182) {
     private val TAG = "LocalHttpServer"
     private var serverSocket: ServerSocket? = null
-    private var threadPool: java.util.concurrent.ExecutorService? = null
+    private val threadPool = Executors.newCachedThreadPool()
     private var isRunning = false
 
     fun start() {
         if (isRunning) return
         isRunning = true
-        if (threadPool == null || threadPool!!.isShutdown) {
-            threadPool = Executors.newCachedThreadPool()
-        }
-        threadPool?.execute {
+        threadPool.execute {
             try {
                 serverSocket = ServerSocket(port)
                 Log.d(TAG, "Local HTTP server initialized on port $port")
                 while (isRunning) {
                     val socket = serverSocket?.accept() ?: break
-                    threadPool?.execute { handleConnection(socket) }
+                    threadPool.execute { handleConnection(socket) }
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Server socket exception: ${e.message}", e)
@@ -49,12 +46,6 @@ class LocalHttpServer(private val context: Context, val port: Int = 8182) {
             Log.e(TAG, "Error closing server socket: ${e.message}")
         }
         serverSocket = null
-        try {
-            threadPool?.shutdownNow()
-        } catch (e: Exception) {
-            Log.e(TAG, "Error shutting down thread pool: ${e.message}")
-        }
-        threadPool = null
     }
 
     fun getLocalServerUrl(contentUri: Uri): String {
