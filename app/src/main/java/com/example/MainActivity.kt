@@ -74,6 +74,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.res.painterResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.browser.SniffedVideo
 import com.example.browser.WebSnifferBrowser
@@ -2963,6 +2965,109 @@ fun CastingBufferAndProgressIndicator(
 }
 
 @Composable
+fun PersistentMiniPlayer(
+    state: CastingState,
+    device: CastingDevice?,
+    title: String,
+    position: Long,
+    duration: Long,
+    onTogglePlayPause: () -> Unit,
+    onStop: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val brandColor = when (device?.protocolType) {
+        ProtocolType.MIRACAST -> Color(0xFFE91E63)
+        ProtocolType.CHROMECAST -> Color(0xFF4285F4)
+        ProtocolType.ROKU -> Color(0xFF8A2BE2)
+        ProtocolType.FIRE_TV -> Color(0xFFFF9900)
+        ProtocolType.AIRPLAY -> Color(0xFF007AFF)
+        ProtocolType.DLNA -> Color(0xFF4CAF50)
+        null -> MaterialTheme.colorScheme.primary
+    }
+
+    val progress = if (duration > 0f) position.toFloat() / duration.toFloat() else 0f
+    val isPlaying = state == CastingState.PLAYING
+
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+        modifier = modifier
+            .fillMaxWidth()
+            .height(64.dp)
+    ) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            LinearProgressIndicator(
+                progress = { progress.coerceIn(0f, 1f) },
+                color = brandColor,
+                trackColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.1f),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(2.dp)
+            )
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .padding(horizontal = 16.dp, vertical = 6.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Tv,
+                    contentDescription = "Casting Device",
+                    tint = brandColor,
+                    modifier = Modifier.size(24.dp)
+                )
+                
+                Spacer(modifier = Modifier.width(12.dp))
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = title.ifEmpty { "Active Casting Stream" },
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "Connected to ${device?.name ?: "Unknown Caster"}",
+                        fontSize = 10.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(8.dp))
+
+                IconButton(
+                    onClick = onTogglePlayPause,
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Icon(
+                        imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                        contentDescription = if (isPlaying) "Pause" else "Play",
+                        tint = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+
+                IconButton(
+                    onClick = onStop,
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Stop Casting",
+                        tint = MaterialTheme.colorScheme.error
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
 fun IqooSmartIsland(
     isEnabled: Boolean,
     isExpanded: Boolean,
@@ -4229,12 +4334,45 @@ fun ClientControllerCard(
     castVolume: Int,
     viewModel: CastViewModel
 ) {
+    var horizontalDragAccumulator by remember { mutableStateOf(0f) }
+    var verticalDragAccumulator by remember { mutableStateOf(0f) }
+
     Card(
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
         modifier = Modifier
             .fillMaxWidth()
             .testTag("remote_controller_panel")
+            .pointerInput(activeCastDevice) {
+                if (activeCastDevice == null) return@pointerInput
+                detectDragGestures(
+                    onDragStart = {
+                        horizontalDragAccumulator = 0f
+                        verticalDragAccumulator = 0f
+                    },
+                    onDrag = { change, dragAmount ->
+                        change.consume()
+                        horizontalDragAccumulator += dragAmount.x
+                        verticalDragAccumulator += dragAmount.y
+                        
+                        // Seek gesture (Horizontal): 1 pixel = 150 milliseconds
+                        if (kotlin.math.abs(horizontalDragAccumulator) > 40f) {
+                            val timeDelta = (horizontalDragAccumulator * 150).toLong()
+                            val newPos = (castPosition + timeDelta).coerceIn(0L, castDuration)
+                            viewModel.mediaController.seekTo(newPos)
+                            horizontalDragAccumulator = 0f
+                        }
+                        
+                        // Volume gesture (Vertical): drag up is negative, drag down is positive
+                        if (kotlin.math.abs(verticalDragAccumulator) > 30f) {
+                            val volDelta = (-verticalDragAccumulator * 0.5f).toInt()
+                            val newVol = (castVolume + volDelta).coerceIn(0, 100)
+                            viewModel.mediaController.setVolume(newVol)
+                            verticalDragAccumulator = 0f
+                        }
+                    }
+                )
+            }
     ) {
         Column(
             modifier = Modifier.padding(20.dp),
@@ -5728,6 +5866,15 @@ fun StreamCastDashboardResponsive(
     var isSmartIslandExpanded by remember { mutableStateOf(false) }
     var expandedReleaseVersion by remember { mutableStateOf("1.2") }
 
+    val isOriginOsDevice = remember {
+        val manufacturer = android.os.Build.MANUFACTURER.lowercase()
+        val brand = android.os.Build.BRAND.lowercase()
+        val model = android.os.Build.MODEL.lowercase()
+        manufacturer.contains("vivo") || manufacturer.contains("iqoo") ||
+                brand.contains("vivo") || brand.contains("iqoo") ||
+                model.contains("vivo") || model.contains("iqoo")
+    }
+
     // App update checker states and SharedPreferences sync
     val updatePrefs = remember { context.getSharedPreferences(com.example.service.UpdateCheckService.PREFS_NAME, Context.MODE_PRIVATE) }
     var updateManifestUrl by remember { mutableStateOf(updatePrefs.getString(com.example.service.UpdateCheckService.PREF_MANIFEST_URL, com.example.service.UpdateCheckService.DEFAULT_MANIFEST_URL) ?: com.example.service.UpdateCheckService.DEFAULT_MANIFEST_URL) }
@@ -5922,32 +6069,44 @@ fun StreamCastDashboardResponsive(
                 )
             },
             bottomBar = {
-                // Screen switching tab selector
-                NavigationBar(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .windowInsetsPadding(WindowInsets.navigationBars)
-                        .testTag("app_navigation_bar"),
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant
-                ) {
-                    NavigationBarItem(
-                        selected = selectedTab == 0,
-                        onClick = { selectedTab = 0 },
-                        icon = { Icon(Icons.Default.Wifi, contentDescription = "Devices tab") },
-                        label = { Text("Scanner", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
-                    )
-                    NavigationBarItem(
-                        selected = selectedTab == 1,
-                        onClick = { selectedTab = 1 },
-                        icon = { Icon(Icons.Default.Language, contentDescription = "Browser tab") },
-                        label = { Text("Web Video", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
-                    )
-                    NavigationBarItem(
-                        selected = selectedTab == 2,
-                        onClick = { selectedTab = 2 },
-                        icon = { Icon(Icons.Default.Info, contentDescription = "Remote & Help Tab") },
-                        label = { Text("Remote & Help", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
-                    )
+                Column {
+                    if (!isOriginOsDevice && currentCastingState != CastingState.IDLE) {
+                        PersistentMiniPlayer(
+                            state = currentCastingState,
+                            device = activeCastDevice,
+                            title = castTitle,
+                            position = castPosition,
+                            duration = castDuration,
+                            onTogglePlayPause = { viewModel.mediaController.togglePlayPause() },
+                            onStop = { viewModel.mediaController.stopCasting() }
+                        )
+                    }
+                    NavigationBar(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .windowInsetsPadding(WindowInsets.navigationBars)
+                            .testTag("app_navigation_bar"),
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant
+                    ) {
+                        NavigationBarItem(
+                            selected = selectedTab == 0,
+                            onClick = { selectedTab = 0 },
+                            icon = { Icon(Icons.Default.Wifi, contentDescription = "Devices tab") },
+                            label = { Text("Scanner", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                        )
+                        NavigationBarItem(
+                            selected = selectedTab == 1,
+                            onClick = { selectedTab = 1 },
+                            icon = { Icon(Icons.Default.Language, contentDescription = "Browser tab") },
+                            label = { Text("Web Video", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                        )
+                        NavigationBarItem(
+                            selected = selectedTab == 2,
+                            onClick = { selectedTab = 2 },
+                            icon = { Icon(Icons.Default.Info, contentDescription = "Remote & Help Tab") },
+                            label = { Text("Remote & Help", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                        )
+                    }
                 }
             }
         ) { innerPadding ->
@@ -6076,15 +6235,19 @@ fun StreamCastDashboardResponsive(
                                         }
 
                                         // Cast History Title
-                                        if (castHistory.isNotEmpty()) {
+                                        val filteredHistory = remember(castHistory, searchQuery) {
+                                            if (searchQuery.isBlank()) castHistory
+                                            else castHistory.filter { it.title.contains(searchQuery, ignoreCase = true) || it.url.contains(searchQuery, ignoreCase = true) }
+                                        }
+                                        if (filteredHistory.isNotEmpty()) {
                                             Spacer(modifier = Modifier.height(8.dp))
                                             Text(
-                                                text = "Cast History Log (${castHistory.size})",
+                                                text = "Cast History Log (${filteredHistory.size})",
                                                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                                                 color = MaterialTheme.colorScheme.onBackground
                                             )
 
-                                            castHistory.forEach { item ->
+                                            filteredHistory.forEach { item ->
                                                 CastHistoryRowItem(
                                                     item = item,
                                                     onDelete = { viewModel.removeHistoryItem(item.id) }
@@ -6343,17 +6506,21 @@ fun StreamCastDashboardResponsive(
                                             )
                                         }
 
-                                        if (castHistory.isNotEmpty()) {
+                                        val filteredHistory = remember(castHistory, searchQuery) {
+                                            if (searchQuery.isBlank()) castHistory
+                                            else castHistory.filter { it.title.contains(searchQuery, ignoreCase = true) || it.url.contains(searchQuery, ignoreCase = true) }
+                                        }
+                                        if (filteredHistory.isNotEmpty()) {
                                             item {
                                                 Spacer(modifier = Modifier.height(8.dp))
                                                 Text(
-                                                    text = "Cast History Log (${castHistory.size})",
+                                                    text = "Cast History Log (${filteredHistory.size})",
                                                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                                                     color = MaterialTheme.colorScheme.onBackground
                                                 )
                                             }
 
-                                            items(castHistory) { item ->
+                                            items(filteredHistory) { item ->
                                                 CastHistoryRowItem(
                                                     item = item,
                                                     onDelete = { viewModel.removeHistoryItem(item.id) }
@@ -6498,25 +6665,27 @@ fun StreamCastDashboardResponsive(
             }
         }
 
-        // Floating dynamic iQOO Smart Island Overlay
-        IqooSmartIsland(
-            isEnabled = isSmartIslandEnabled,
-            isExpanded = isSmartIslandExpanded,
-            onToggleExpand = { isSmartIslandExpanded = !isSmartIslandExpanded },
-            state = currentCastingState,
-            device = activeCastDevice,
-            title = castTitle,
-            position = castPosition,
-            duration = castDuration,
-            bufferPercentage = castBufferPercentage,
-            volume = castVolume,
-            onTogglePlayPause = { viewModel.mediaController.togglePlayPause() },
-            onSeek = { pos -> viewModel.mediaController.seekTo(pos) },
-            onVolumeChange = { vol -> viewModel.mediaController.setVolume(vol) },
-            onStop = { viewModel.mediaController.stopCasting() },
-            isDiscovering = isDiscovering,
-            discoveredCount = allDevicesToShow.size
-        )
+        // Floating dynamic iQOO Smart Island Overlay (only on OriginOS/Vivo/iQOO devices)
+        if (isOriginOsDevice) {
+            IqooSmartIsland(
+                isEnabled = isSmartIslandEnabled,
+                isExpanded = isSmartIslandExpanded,
+                onToggleExpand = { isSmartIslandExpanded = !isSmartIslandExpanded },
+                state = currentCastingState,
+                device = activeCastDevice,
+                title = castTitle,
+                position = castPosition,
+                duration = castDuration,
+                bufferPercentage = castBufferPercentage,
+                volume = castVolume,
+                onTogglePlayPause = { viewModel.mediaController.togglePlayPause() },
+                onSeek = { pos -> viewModel.mediaController.seekTo(pos) },
+                onVolumeChange = { vol -> viewModel.mediaController.setVolume(vol) },
+                onStop = { viewModel.mediaController.stopCasting() },
+                isDiscovering = isDiscovering,
+                discoveredCount = allDevicesToShow.size
+            )
+        }
 
         // Floating diagnostic info pane
         DiagnosticHudOverlay(

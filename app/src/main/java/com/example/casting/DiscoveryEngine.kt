@@ -626,7 +626,7 @@ class DiscoveryEngine(private val context: Context) {
             var socket: Socket? = null
             try {
                 socket = Socket()
-                socket.connect(InetSocketAddress(ip, port), 1500) // 1500ms timeout
+                socket.connect(InetSocketAddress(ip, port), 800) // 800ms timeout
                 Log.d(TAG, "Found active port $port on $ip")
                 
                 if (port == 8008 || port == 8009) {
