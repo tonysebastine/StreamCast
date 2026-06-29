@@ -1045,58 +1045,22 @@ fun StreamCastDashboardOld(
                             }
                         }
 
-                        // Cast History lists
+                        // Cast History lists (Last 10 sessions)
                         if (castHistory.isNotEmpty()) {
                             item {
+                                Spacer(modifier = Modifier.height(12.dp))
                                 Text(
-                                    "Historical Streams Casted",
+                                    "Casting History (Last 10 Sessions)",
                                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
                                 )
+                                Spacer(modifier = Modifier.height(8.dp))
                             }
-                            items(castHistory.take(4)) { item ->
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                                        .padding(8.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(
-                                        Icons.AutoMirrored.Filled.List,
-                                        contentDescription = "stream log history",
-                                        modifier = Modifier.size(16.dp),
-                                        tint = MaterialTheme.colorScheme.outline
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            item.title,
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                        Text(
-                                            item.url,
-                                            fontSize = 9.sp,
-                                            color = MaterialTheme.colorScheme.outline,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                    }
-                                    IconButton(
-                                        onClick = { viewModel.removeHistoryItem(item.id) },
-                                        modifier = Modifier.size(24.dp)
-                                    ) {
-                                        Icon(
-                                            Icons.Default.Close,
-                                            contentDescription = "Delete item",
-                                            modifier = Modifier.size(14.dp),
-                                            tint = MaterialTheme.colorScheme.error
-                                        )
-                                    }
-                                }
+                            items(castHistory.take(10)) { item ->
+                                CastHistoryRowItem(
+                                    item = item,
+                                    onDelete = { viewModel.removeHistoryItem(item.id) }
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
                             }
                         }
                     }
@@ -3044,45 +3008,127 @@ fun CastHistoryRowItem(
     item: CastHistoryItem,
     onDelete: () -> Unit
 ) {
+    val formattedTime = remember(item.timestamp) {
+        try {
+            val sdf = java.text.SimpleDateFormat("MMM dd, yyyy • hh:mm a", java.util.Locale.getDefault())
+            sdf.format(java.util.Date(item.timestamp))
+        } catch (e: Exception) {
+            "Unknown Time"
+        }
+    }
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-            .padding(8.dp),
+            .clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
+            .border(
+                width = 1.dp,
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+                shape = RoundedCornerShape(12.dp)
+            )
+            .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(
-            Icons.AutoMirrored.Filled.List,
-            contentDescription = "stream log history",
-            modifier = Modifier.size(16.dp),
-            tint = MaterialTheme.colorScheme.outline
-        )
-        Spacer(modifier = Modifier.width(8.dp))
-        Column(modifier = Modifier.weight(1f)) {
+        // Decorative Play/Cast icon inside circular background
+        Box(
+            modifier = Modifier
+                .size(36.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.8f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Default.PlayArrow,
+                contentDescription = "Playback session",
+                modifier = Modifier.size(18.dp),
+                tint = MaterialTheme.colorScheme.primary
+            )
+        }
+
+        Spacer(modifier = Modifier.width(12.dp))
+
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            // Title of playback session
             Text(
-                item.title,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold,
+                text = item.title,
+                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
+
+            // Target Device Name
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Tv,
+                    contentDescription = "Target device",
+                    modifier = Modifier.size(12.dp),
+                    tint = MaterialTheme.colorScheme.secondary
+                )
+                Text(
+                    text = item.deviceName.ifEmpty { "Generic Casting Device" },
+                    style = MaterialTheme.typography.bodySmall,
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+
+            // Media URI / Source URL
             Text(
-                item.url,
-                fontSize = 9.sp,
+                text = item.url,
+                style = MaterialTheme.typography.bodySmall,
+                fontSize = 10.sp,
+                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
                 color = MaterialTheme.colorScheme.outline,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
+
+            // Session Timestamp
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.History,
+                    contentDescription = "Session time",
+                    modifier = Modifier.size(11.dp),
+                    tint = MaterialTheme.colorScheme.outline
+                )
+                Text(
+                    text = formattedTime,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontSize = 10.sp,
+                    color = MaterialTheme.colorScheme.outline,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
-        IconButton(
-            onClick = onDelete,
-            modifier = Modifier.size(24.dp)
+
+        Spacer(modifier = Modifier.width(8.dp))
+
+        // Delete button with 48dp interactive area
+        Box(
+            modifier = Modifier
+                .size(48.dp)
+                .clip(CircleShape)
+                .clickable(onClick = onDelete),
+            contentAlignment = Alignment.Center
         ) {
             Icon(
-                Icons.Default.Close,
-                contentDescription = "Delete item",
-                modifier = Modifier.size(14.dp),
+                imageVector = Icons.Default.Close,
+                contentDescription = "Delete from history",
+                modifier = Modifier.size(16.dp),
                 tint = MaterialTheme.colorScheme.error
             )
         }
@@ -4078,8 +4124,9 @@ fun StreamCastDashboardResponsive(
     val manualDevices = remember { mutableStateListOf<CastingDevice>() }
 
     val filteredCastHistory = remember(castHistory, searchQuery) {
-        if (searchQuery.isBlank()) castHistory
-        else castHistory.filter { it.title.contains(searchQuery, ignoreCase = true) || it.url.contains(searchQuery, ignoreCase = true) }
+        val limitedHistory = castHistory.take(10)
+        if (searchQuery.isBlank()) limitedHistory
+        else limitedHistory.filter { it.title.contains(searchQuery, ignoreCase = true) || it.url.contains(searchQuery, ignoreCase = true) }
     }
 
     LaunchedEffect(secureCastError) {
@@ -4464,7 +4511,7 @@ fun StreamCastDashboardResponsive(
                                         if (castHistory.isNotEmpty()) {
                                             Spacer(modifier = Modifier.height(8.dp))
                                             Text(
-                                                text = if (searchQuery.isBlank()) "Cast History Log (${castHistory.size})" else "Cast History Log (${filteredCastHistory.size} matches)",
+                                                text = if (searchQuery.isBlank()) "Cast History (Last ${filteredCastHistory.size} Sessions)" else "Cast History (${filteredCastHistory.size} matches)",
                                                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                                                 color = MaterialTheme.colorScheme.onBackground
                                             )
@@ -4732,7 +4779,7 @@ fun StreamCastDashboardResponsive(
                                             item {
                                                 Spacer(modifier = Modifier.height(8.dp))
                                                 Text(
-                                                    text = if (searchQuery.isBlank()) "Cast History Log (${castHistory.size})" else "Cast History Log (${filteredCastHistory.size} matches)",
+                                                    text = if (searchQuery.isBlank()) "Cast History (Last ${filteredCastHistory.size} Sessions)" else "Cast History (${filteredCastHistory.size} matches)",
                                                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                                                     color = MaterialTheme.colorScheme.onBackground
                                                 )

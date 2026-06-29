@@ -9,6 +9,7 @@ data class CastHistoryItem(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val title: String,
     val url: String,
+    val deviceName: String = "Unknown Device",
     val timestamp: Long = System.currentTimeMillis()
 )
 
@@ -40,7 +41,7 @@ interface CastDao {
     suspend fun deleteBookmark(bookmark: BookmarkedUrl)
 }
 
-@Database(entities = [CastHistoryItem::class, BookmarkedUrl::class], version = 1, exportSchema = false)
+@Database(entities = [CastHistoryItem::class, BookmarkedUrl::class], version = 2, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun castDao(): CastDao
 
@@ -54,7 +55,9 @@ abstract class AppDatabase : RoomDatabase() {
                     context.applicationContext,
                     AppDatabase::class.java,
                     "stream_cast_database"
-                ).build()
+                )
+                .fallbackToDestructiveMigration()
+                .build()
                 INSTANCE = instance
                 instance
             }

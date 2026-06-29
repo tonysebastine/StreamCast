@@ -92,7 +92,7 @@ class CastViewModel(application: Application) : AndroidViewModel(application) {
         // Store casting action into room history
         viewModelScope.launch {
             repository.insertHistoryItem(
-                CastHistoryItem(title = name, url = streamingUrl)
+                CastHistoryItem(title = name, url = streamingUrl, deviceName = device.name)
             )
         }
 
@@ -103,7 +103,7 @@ class CastViewModel(application: Application) : AndroidViewModel(application) {
         // Store casting action into room history
         viewModelScope.launch {
             repository.insertHistoryItem(
-                CastHistoryItem(title = video.title, url = video.url)
+                CastHistoryItem(title = video.title, url = video.url, deviceName = device.name)
             )
         }
         mediaController.castMedia(device, video.url, video.title)
