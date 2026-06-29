@@ -58,6 +58,16 @@ sealed class CastingError(val title: String, val message: String, val debugLogs:
 
 class UniversalMediaController(private val context: android.content.Context? = null) {
     private val TAG = "UniversalMediaController"
+
+    private var uiActivityRef: java.lang.ref.WeakReference<androidx.fragment.app.FragmentActivity>? = null
+
+    fun setUiActivity(activity: androidx.fragment.app.FragmentActivity?) {
+        uiActivityRef = activity?.let { java.lang.ref.WeakReference(it) }
+    }
+
+    private fun getActiveContext(): android.content.Context? {
+        return uiActivityRef?.get() ?: context
+    }
     
     private val _state = MutableStateFlow(CastingState.IDLE)
     val state: StateFlow<CastingState> = _state.asStateFlow()
@@ -441,7 +451,7 @@ class UniversalMediaController(private val context: android.content.Context? = n
         // Google Cast SDK operations require the Main thread
         dispatcherScope.launch(Dispatchers.Main) {
             try {
-                val ctx = context ?: throw IllegalStateException("Android Context is not available")
+                val ctx = getActiveContext() ?: throw IllegalStateException("Android Context is not available")
                 Log.d(TAG, "Retrieving CastContext shared instance...")
                 val castContext = com.google.android.gms.cast.framework.CastContext.getSharedInstance(ctx)
                 val sessionManager = castContext.sessionManager
@@ -465,7 +475,7 @@ class UniversalMediaController(private val context: android.content.Context? = n
         Log.i(TAG, "showCastDevicePickerDialog() invoked. Launching the native MediaRoute chooser dialog programmatically...")
         dispatcherScope.launch(Dispatchers.Main) {
             try {
-                val ctx = context
+                val ctx = getActiveContext()
                 if (ctx is androidx.fragment.app.FragmentActivity) {
                     val mediaRouteSelector = com.google.android.gms.cast.framework.CastContext.getSharedInstance(ctx).mergedSelector
                     if (mediaRouteSelector != null) {

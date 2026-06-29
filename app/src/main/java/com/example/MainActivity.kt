@@ -106,6 +106,14 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         Log.i("System", "StreamCast initialized cleanly. Android SDK ${android.os.Build.VERSION.SDK_INT}")
         
+        // Register this activity context in the CastViewModel's mediaController to support Cast SDK UI operations
+        try {
+            val viewModel = androidx.lifecycle.ViewModelProvider(this)[CastViewModel::class.java]
+            viewModel.mediaController.setUiActivity(this)
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Failed to register FragmentActivity context with CastViewModel: ${e.message}")
+        }
+
         // Request SDK 36 nearby wifi permission for local network privacy using helper
         if (!LocalNetworkPermissionHelper.hasPermission(this)) {
             LocalNetworkPermissionHelper.requestPermission(this, 101)
@@ -142,6 +150,16 @@ class MainActivity : AppCompatActivity() {
                 Log.w("MainActivity", "Nearby devices / Location permission request denied by user.")
             }
         )
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        try {
+            val viewModel = androidx.lifecycle.ViewModelProvider(this)[CastViewModel::class.java]
+            viewModel.mediaController.setUiActivity(null)
+        } catch (e: Exception) {
+            // Ignore
+        }
     }
 }
 
