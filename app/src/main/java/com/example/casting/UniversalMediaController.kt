@@ -99,6 +99,11 @@ class UniversalMediaController(private val context: android.content.Context? = n
         .readTimeout(1500, TimeUnit.MILLISECONDS)
         .build()
 
+    private val dialClient = okHttpClient.newBuilder()
+        .connectTimeout(1500, TimeUnit.MILLISECONDS)
+        .readTimeout(2000, TimeUnit.MILLISECONDS)
+        .build()
+
     private val handlers: Map<ProtocolType, CastProtocolHandler> by lazy {
         mapOf(
             ProtocolType.ROKU to RokuCastHandler(okHttpClient)
@@ -277,7 +282,7 @@ class UniversalMediaController(private val context: android.content.Context? = n
                     .url(endpoint)
                     .post(payload.toRequestBody("application/x-www-form-urlencoded".toMediaType()))
                     .build()
-                okHttpClient.newCall(request).execute().use { resp ->
+                dialClient.newCall(request).execute().use { resp ->
                     val isSuccess = resp.isSuccessful || resp.code == 201 || resp.code == 202
                     val respBody = resp.body?.string() ?: ""
                     Log.d(TAG, "Fire TV DIAL amzn.thin.pl on port $port response: code=${resp.code}, msg=${resp.message}, bodyLength=${respBody.length}")
@@ -311,7 +316,7 @@ class UniversalMediaController(private val context: android.content.Context? = n
                     .url(endpoint)
                     .post(xmlBody.toRequestBody("application/xml".toMediaType()))
                     .build()
-                okHttpClient.newCall(request).execute().use { resp ->
+                dialClient.newCall(request).execute().use { resp ->
                     val isSuccess = resp.isSuccessful || resp.code == 201 || resp.code == 202
                     val respBody = resp.body?.string() ?: ""
                     Log.d(TAG, "Fire TV DIAL UniversalReceiverPlayer on port $port response: code=${resp.code}, msg=${resp.message}, bodyLength=${respBody.length}")
@@ -344,7 +349,7 @@ class UniversalMediaController(private val context: android.content.Context? = n
                     .url(endpoint)
                     .post(url.toRequestBody("text/plain".toMediaType()))
                     .build()
-                okHttpClient.newCall(request).execute().use { resp ->
+                dialClient.newCall(request).execute().use { resp ->
                     val isSuccess = resp.isSuccessful || resp.code == 201 || resp.code == 202
                     val respBody = resp.body?.string() ?: ""
                     Log.d(TAG, "Fire TV DIAL SystemMediaRender on port $port response: code=${resp.code}, msg=${resp.message}, bodyLength=${respBody.length}")
@@ -378,7 +383,7 @@ class UniversalMediaController(private val context: android.content.Context? = n
                     .url(endpoint)
                     .post(payload.toRequestBody("application/x-www-form-urlencoded".toMediaType()))
                     .build()
-                okHttpClient.newCall(request).execute().use { resp ->
+                dialClient.newCall(request).execute().use { resp ->
                     val isSuccess = resp.isSuccessful || resp.code == 201 || resp.code == 202
                     val respBody = resp.body?.string() ?: ""
                     Log.d(TAG, "Fire TV DIAL AmazonFling on port $port response: code=${resp.code}, msg=${resp.message}, bodyLength=${respBody.length}")
@@ -815,6 +820,13 @@ class UniversalMediaController(private val context: android.content.Context? = n
                     }
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to fetch description from $loc: ${e.message}", e)
+                    val isTimeout = e is java.net.SocketTimeoutException ||
+                                    e is java.io.InterruptedIOException ||
+                                    e.message?.contains("timeout", ignoreCase = true) == true
+                    if (isTimeout) {
+                        Log.w(TAG, "Timeout fetching DLNA description on port $port from $loc. Aborting further path probes on this port to avoid hanging.")
+                        break@forLocLoop
+                    }
                     val isUnreachable = e is java.net.ConnectException || 
                                         e is java.net.PortUnreachableException || 
                                         e is java.net.NoRouteToHostException ||
@@ -927,7 +939,14 @@ class UniversalMediaController(private val context: android.content.Context? = n
                         Log.e(TAG, "DLNA Play action failed on $endpoint with status code $playCode. SOAP error response: $playBody")
                     }
                 } catch (e: Exception) {
-                    Log.e(TAG, "DLNA SOAP attempt failed for endpoint $endpoint: ${e.message}. Moving to next path.", e)
+                    Log.e(TAG, "DLNA SOAP attempt failed for endpoint $endpoint: ${e.message}.", e)
+                    val isTimeout = e is java.net.SocketTimeoutException ||
+                                    e is java.io.InterruptedIOException ||
+                                    e.message?.contains("timeout", ignoreCase = true) == true
+                    if (isTimeout) {
+                        Log.w(TAG, "Timeout during DLNA SOAP call to $endpoint. Aborting remaining paths on this port to prevent hanging.")
+                        break
+                    }
                 }
             }
             return false

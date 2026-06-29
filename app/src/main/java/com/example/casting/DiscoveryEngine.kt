@@ -465,7 +465,10 @@ class DiscoveryEngine(private val context: Context) {
         for (line in lines) {
             val upperLine = line.uppercase()
             if (upperLine.startsWith("LOCATION:")) {
-                locationUrl = line.substringAfter("LOCATION:").trim()
+                val colonIdx = line.indexOf(':')
+                if (colonIdx != -1 && colonIdx < line.length - 1) {
+                    locationUrl = line.substring(colonIdx + 1).trim()
+                }
             }
             if (upperLine.contains("ROKU:ECP")) {
                 isRoku = true
