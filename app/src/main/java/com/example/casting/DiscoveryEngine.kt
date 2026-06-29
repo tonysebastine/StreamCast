@@ -269,39 +269,43 @@ class DiscoveryEngine(private val context: Context) {
             else -> ProtocolType.CHROMECAST
         }
 
-        val friendlyName = when (protocolType) {
-            ProtocolType.MIRACAST -> {
-                "Miracast DLNA Receiver ($host)"
-            }
-            ProtocolType.CHROMECAST -> {
-                getTxtRecord(resolved, "fn") ?: rawName.substringBefore(".tcp").replace("_", " ").trim()
-            }
-            ProtocolType.AIRPLAY -> {
-                rawName.replace("@", " ").replace("_airplay", "").replace("_tcp", "").replace("_", " ").trim()
-            }
+        when (protocolType) {
             ProtocolType.ROKU -> {
-                "Roku Caster Receiver ($host)"
-            }
-            ProtocolType.FIRE_TV -> {
-                "Amazon Fire TV ($host)"
+                identifyRokuDevice(host, port)
             }
             ProtocolType.DLNA -> {
-                rawName.replace("_", " ").trim()
+                identifyDlnaDeviceAsync(host, port)
+            }
+            ProtocolType.FIRE_TV -> {
+                identifyDialDeviceAsync(host, port)
             }
             else -> {
-                rawName.replace("_", " ").trim()
+                val friendlyName = when (protocolType) {
+                    ProtocolType.MIRACAST -> {
+                        "Miracast DLNA Receiver ($host)"
+                    }
+                    ProtocolType.CHROMECAST -> {
+                        getTxtRecord(resolved, "fn") ?: rawName.substringBefore(".tcp").replace("_", " ").trim()
+                    }
+                    ProtocolType.AIRPLAY -> {
+                        rawName.replace("@", " ").replace("_airplay", "").replace("_tcp", "").replace("_", " ").trim()
+                    }
+                    else -> {
+                        rawName.replace("_", " ").trim()
+                    }
+                }
+
+                val deviceId = "${protocolType.name.lowercase()}_$host"
+                val device = CastingDevice(
+                    id = deviceId,
+                    name = friendlyName,
+                    ipAddress = host,
+                    port = port,
+                    protocolType = protocolType
+                )
+                addOrUpdateDevice(device)
             }
         }
-
-        val deviceId = "${protocolType.name.lowercase()}_$host"
-        val device = CastingDevice(
-            id = deviceId,
-            name = friendlyName,
-            ipAddress = host,
-            port = port,
-            protocolType = protocolType
-        )
-        addOrUpdateDevice(device)
     }
 
     private fun getTxtRecord(serviceInfo: NsdServiceInfo, key: String): String? {
@@ -457,7 +461,6 @@ class DiscoveryEngine(private val context: Context) {
         var isDlna = false
         var isMiracast = false
         var locationUrl: String? = null
-        var friendlyName = "Unknown Lan Device"
 
         for (line in lines) {
             val upperLine = line.uppercase()
@@ -525,25 +528,35 @@ class DiscoveryEngine(private val context: Context) {
             ProtocolType.MIRACAST -> 49152
         }
 
-        friendlyName = when (protocol) {
-            ProtocolType.MIRACAST -> "Miracast Screen Adapter ($ip)"
-            ProtocolType.ROKU -> "Roku Caster Receiver ($ip)"
-            ProtocolType.FIRE_TV -> "Amazon Fire TV ($ip)"
-            ProtocolType.DLNA -> "DLNA Smart TV / Renderer ($ip)"
-            else -> "LAN Cast Receiver ($ip)"
+        when (protocol) {
+            ProtocolType.ROKU -> {
+                identifyRokuDevice(ip, devicePort)
+            }
+            ProtocolType.FIRE_TV -> {
+                identifyDialDeviceAsync(ip, devicePort, locationUrl)
+            }
+            ProtocolType.DLNA -> {
+                identifyDlnaDeviceAsync(ip, devicePort, locationUrl)
+            }
+            else -> {
+                val friendlyName = when (protocol) {
+                    ProtocolType.MIRACAST -> "Miracast Screen Adapter ($ip)"
+                    else -> "LAN Cast Receiver ($ip)"
+                }
+
+                val deviceId = "${protocol.name.lowercase()}_$ip"
+                val device = CastingDevice(
+                    id = deviceId,
+                    name = friendlyName,
+                    ipAddress = ip,
+                    port = devicePort,
+                    protocolType = protocol,
+                    location = locationUrl
+                )
+
+                addOrUpdateDevice(device)
+            }
         }
-
-        val deviceId = "${protocol.name.lowercase()}_$ip"
-        val device = CastingDevice(
-            id = deviceId,
-            name = friendlyName,
-            ipAddress = ip,
-            port = devicePort,
-            protocolType = protocol,
-            location = locationUrl
-        )
-
-        addOrUpdateDevice(device)
     }
 
     private fun addOrUpdateDevice(device: CastingDevice) {
@@ -638,19 +651,11 @@ class DiscoveryEngine(private val context: Context) {
                 Log.d(TAG, "Found active port $port on $ip")
                 
                 if (port == 8008 || port == 8009) {
-                    identifyDialDevice(ip, port)
+                    identifyDialDeviceAsync(ip, port)
                 } else if (port == 8060) {
-                    val deviceId = "roku_$ip"
-                    val device = CastingDevice(
-                        id = deviceId,
-                        name = "Roku Caster Receiver ($ip)",
-                        ipAddress = ip,
-                        port = 8060,
-                        protocolType = ProtocolType.ROKU
-                    )
-                    addOrUpdateDevice(device)
+                    identifyRokuDevice(ip, 8060)
                 } else if (port == 49152 || port == 49153) {
-                    identifyDlnaDevice(ip, port)
+                    identifyDlnaDeviceAsync(ip, port)
                 }
             } catch (e: Exception) {
                 // Port closed or host unreachable, ignore
@@ -662,30 +667,111 @@ class DiscoveryEngine(private val context: Context) {
         }
     }
 
-    private fun identifyDlnaDevice(ip: String, port: Int) {
-        val locations = listOf(
-            "http://$ip:$port/description.xml",
-            "http://$ip:$port/upnp/description.xml",
-            "http://$ip:$port/dmr/description.xml",
-            "http://$ip:$port/"
-        )
-        
-        Log.d(TAG, "Starting DLNA identification scan on $ip:$port across ${locations.size} location patterns")
-        for (loc in locations) {
+    private fun identifyDlnaDeviceAsync(ip: String, port: Int, locationUrl: String? = null) {
+        discoveryScope?.launch(Dispatchers.IO) {
+            val locations = if (locationUrl != null) {
+                listOf(locationUrl)
+            } else {
+                listOf(
+                    "http://$ip:$port/description.xml",
+                    "http://$ip:$port/upnp/description.xml",
+                    "http://$ip:$port/dmr/description.xml",
+                    "http://$ip:$port/"
+                )
+            }
+            
+            Log.d(TAG, "Starting DLNA identification scan on $ip:$port across ${locations.size} location patterns")
+            for (loc in locations) {
+                var connection: HttpURLConnection? = null
+                try {
+                    Log.d(TAG, "Fetching DLNA description XML from: $loc")
+                    val url = URL(loc)
+                    connection = url.openConnection() as HttpURLConnection
+                    connection.connectTimeout = 800
+                    connection.readTimeout = 800
+                    connection.requestMethod = "GET"
+                    
+                    val responseCode = connection.responseCode
+                    if (responseCode == 200) {
+                        val stream = connection.inputStream
+                        val reader = BufferedReader(InputStreamReader(stream))
+                        val response = java.lang.StringBuilder()
+                        var line: String?
+                        while (reader.readLine().also { line = it } != null) {
+                            response.append(line)
+                        }
+                        reader.close()
+                        stream.close()
+                        
+                        val xml = response.toString()
+                        val friendlyName = xml.substringAfter("<friendlyName>", "").substringBefore("</friendlyName>", "").trim()
+                        val manufacturer = xml.substringAfter("<manufacturer>", "").substringBefore("</manufacturer>", "").trim()
+                        
+                        val finalName = if (friendlyName.isNotEmpty()) {
+                            if (friendlyName.contains("Fire", ignoreCase = true) || manufacturer.contains("Amazon", ignoreCase = true)) {
+                                "$friendlyName (Fire TV DLNA)"
+                            } else {
+                                "$friendlyName (DLNA TV)"
+                            }
+                        } else {
+                            "DLNA Smart TV ($ip)"
+                        }
+                        
+                        Log.d(TAG, "SUCCESS: DLNA device identified successfully at $loc. friendlyName=$friendlyName, manufacturer=$manufacturer, finalName=$finalName")
+                        
+                        val deviceId = "dlna_${port}_$ip"
+                        val device = CastingDevice(
+                            id = deviceId,
+                            name = finalName,
+                            ipAddress = ip,
+                            port = port,
+                            protocolType = ProtocolType.DLNA,
+                            location = loc
+                        )
+                        addOrUpdateDevice(device)
+                        return@launch
+                    } else {
+                        Log.w(TAG, "DLNA description request to $loc failed with response code: $responseCode")
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "DLNA description request failed for $loc: ${e.message}")
+                } finally {
+                    connection?.disconnect()
+                }
+            }
+            
+            // Default DLNA fallback if port was open but desc couldn't be fetched
+            Log.w(TAG, "DLNA description fetches failed for all locations on $ip:$port. Creating fallback generic DLNA device.")
+            val deviceId = "dlna_${port}_$ip"
+            val device = CastingDevice(
+                id = deviceId,
+                name = "DLNA Smart TV ($ip)",
+                ipAddress = ip,
+                port = port,
+                protocolType = ProtocolType.DLNA
+            )
+            addOrUpdateDevice(device)
+        }
+    }
+
+    private fun identifyDialDeviceAsync(ip: String, port: Int = 8008, locationUrl: String? = null) {
+        discoveryScope?.launch(Dispatchers.IO) {
+            val urlString = locationUrl ?: "http://$ip:$port/ssdp/device-desc.xml"
+            Log.d(TAG, "Starting DIAL identification scan on $ip:$port via: $urlString")
             var connection: HttpURLConnection? = null
             try {
-                Log.d(TAG, "Fetching DLNA description XML from: $loc")
-                val url = URL(loc)
+                val url = URL(urlString)
                 connection = url.openConnection() as HttpURLConnection
-                connection.connectTimeout = 800
-                connection.readTimeout = 800
+                connection.connectTimeout = 1000
+                connection.readTimeout = 1000
                 connection.requestMethod = "GET"
                 
                 val responseCode = connection.responseCode
+                Log.d(TAG, "DIAL description request for $ip:$port returned status code: $responseCode")
                 if (responseCode == 200) {
                     val stream = connection.inputStream
                     val reader = BufferedReader(InputStreamReader(stream))
-                    val response = java.lang.StringBuilder()
+                    val response = StringBuilder()
                     var line: String?
                     while (reader.readLine().also { line = it } != null) {
                         response.append(line)
@@ -695,170 +781,153 @@ class DiscoveryEngine(private val context: Context) {
                     
                     val xml = response.toString()
                     val friendlyName = xml.substringAfter("<friendlyName>", "").substringBefore("</friendlyName>", "").trim()
+                    val modelName = xml.substringAfter("<modelName>", "").substringBefore("</modelName>", "").trim()
                     val manufacturer = xml.substringAfter("<manufacturer>", "").substringBefore("</manufacturer>", "").trim()
                     
+                    val isAmazon = manufacturer.contains("Amazon", ignoreCase = true) || 
+                                    modelName.contains("Fire", ignoreCase = true) || 
+                                    xml.contains("Amazon", ignoreCase = true)
+                    
                     val finalName = if (friendlyName.isNotEmpty()) {
-                        if (friendlyName.contains("Fire", ignoreCase = true) || manufacturer.contains("Amazon", ignoreCase = true)) {
-                            "$friendlyName (Fire TV DLNA)"
-                        } else {
-                            "$friendlyName (DLNA TV)"
-                        }
+                        if (isAmazon) "$friendlyName (Fire TV)" else "$friendlyName (DIAL Device)"
                     } else {
-                        "DLNA Smart TV ($ip)"
+                        if (isAmazon) "Amazon Fire TV ($ip)" else "Chromecast / DIAL Device ($ip)"
                     }
                     
-                    Log.d(TAG, "SUCCESS: DLNA device identified successfully at $loc. friendlyName=$friendlyName, manufacturer=$manufacturer, finalName=$finalName")
+                    Log.d(TAG, "SUCCESS: DIAL device identified successfully. friendlyName=$friendlyName, modelName=$modelName, manufacturer=$manufacturer, isAmazon=$isAmazon, finalName=$finalName")
                     
-                    val deviceId = "dlna_${port}_$ip"
+                    val protocol = if (isAmazon) ProtocolType.FIRE_TV else ProtocolType.CHROMECAST
+                    val deviceId = "${protocol.name.lowercase()}_$ip"
+                    
                     val device = CastingDevice(
                         id = deviceId,
                         name = finalName,
                         ipAddress = ip,
                         port = port,
-                        protocolType = ProtocolType.DLNA,
-                        location = loc
+                        protocolType = protocol,
+                        location = urlString
                     )
                     addOrUpdateDevice(device)
-                    return
                 } else {
-                    Log.w(TAG, "DLNA description request to $loc failed with response code: $responseCode")
+                    Log.w(TAG, "DIAL description request failed for $ip:$port with status code: $responseCode. Creating fallback devices.")
+                    createDialFallbacks(ip, port)
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "DLNA description request failed for $loc: ${e.message}", e)
+                Log.e(TAG, "ERROR: DIAL identification exception for $ip:$port: ${e.message}. Creating fallback devices.", e)
+                createDialFallbacks(ip, port)
             } finally {
                 connection?.disconnect()
             }
         }
-        
-        // Default DLNA fallback if port was open but desc couldn't be fetched
-        Log.w(TAG, "DLNA description fetches failed for all locations on $ip:$port. Creating fallback generic DLNA device.")
-        val deviceId = "dlna_${port}_$ip"
-        val device = CastingDevice(
-            id = deviceId,
-            name = "DLNA Smart TV ($ip)",
-            ipAddress = ip,
-            port = port,
-            protocolType = ProtocolType.DLNA
-        )
-        addOrUpdateDevice(device)
     }
 
-    private fun identifyDialDevice(ip: String, port: Int = 8008) {
-        val urlString = "http://$ip:$port/ssdp/device-desc.xml"
-        Log.d(TAG, "Starting DIAL identification scan on $ip:$port via: $urlString")
-        var connection: HttpURLConnection? = null
-        try {
-            val url = URL(urlString)
-            connection = url.openConnection() as HttpURLConnection
-            connection.connectTimeout = 1000
-            connection.readTimeout = 1000
-            connection.requestMethod = "GET"
+    private fun createDialFallbacks(ip: String, port: Int) {
+        if (port == 8009) {
+            val chromecastDev = CastingDevice(
+                id = "chromecast_$ip",
+                name = "Chromecast / Cast Device ($ip)",
+                ipAddress = ip,
+                port = 8009,
+                protocolType = ProtocolType.CHROMECAST
+            )
+            addOrUpdateDevice(chromecastDev)
             
-            val responseCode = connection.responseCode
-            Log.d(TAG, "DIAL description request for $ip:$port returned status code: $responseCode")
-            if (responseCode == 200) {
-                val stream = connection.inputStream
-                val reader = BufferedReader(InputStreamReader(stream))
-                val response = StringBuilder()
-                var line: String?
-                while (reader.readLine().also { line = it } != null) {
-                    response.append(line)
-                }
-                reader.close()
-                stream.close()
+            val fireTvDev = CastingDevice(
+                id = "fire_tv_8009_$ip",
+                name = "Amazon Fire TV [DIAL 8009] ($ip)",
+                ipAddress = ip,
+                port = 8009,
+                protocolType = ProtocolType.FIRE_TV
+            )
+            addOrUpdateDevice(fireTvDev)
+        } else {
+            val device = CastingDevice(
+                id = "fire_tv_$ip",
+                name = "Amazon Fire TV ($ip)",
+                ipAddress = ip,
+                port = port,
+                protocolType = ProtocolType.FIRE_TV
+            )
+            addOrUpdateDevice(device)
+        }
+    }
+
+    private fun identifyRokuDevice(ip: String, port: Int = 8060) {
+        discoveryScope?.launch(Dispatchers.IO) {
+            val urlString = "http://$ip:$port/query/device-info"
+            Log.d(TAG, "Starting Roku identification scan on $ip:$port via: $urlString")
+            var connection: HttpURLConnection? = null
+            try {
+                val url = URL(urlString)
+                connection = url.openConnection() as HttpURLConnection
+                connection.connectTimeout = 1000
+                connection.readTimeout = 1000
+                connection.requestMethod = "GET"
                 
-                val xml = response.toString()
-                val friendlyName = xml.substringAfter("<friendlyName>", "").substringBefore("</friendlyName>", "").trim()
-                val modelName = xml.substringAfter("<modelName>", "").substringBefore("</modelName>", "").trim()
-                val manufacturer = xml.substringAfter("<manufacturer>", "").substringBefore("</manufacturer>", "").trim()
-                
-                val isAmazon = manufacturer.contains("Amazon", ignoreCase = true) || 
-                                modelName.contains("Fire", ignoreCase = true) || 
-                                xml.contains("Amazon", ignoreCase = true)
-                
-                val finalName = if (friendlyName.isNotEmpty()) {
-                    if (isAmazon) "$friendlyName (Fire TV)" else "$friendlyName (DIAL Device)"
-                } else {
-                    if (isAmazon) "Amazon Fire TV ($ip)" else "Chromecast / DIAL Device ($ip)"
-                }
-                
-                Log.d(TAG, "SUCCESS: DIAL device identified successfully. friendlyName=$friendlyName, modelName=$modelName, manufacturer=$manufacturer, isAmazon=$isAmazon, finalName=$finalName")
-                
-                val protocol = if (isAmazon) ProtocolType.FIRE_TV else ProtocolType.CHROMECAST
-                val deviceId = "${protocol.name.lowercase()}_$ip"
-                
-                val device = CastingDevice(
-                    id = deviceId,
-                    name = finalName,
-                    ipAddress = ip,
-                    port = port,
-                    protocolType = protocol,
-                    location = urlString
-                )
-                addOrUpdateDevice(device)
-            } else {
-                Log.w(TAG, "DIAL description request failed for $ip:$port with status code: $responseCode. Creating fallback devices.")
-                if (port == 8009) {
-                    val chromecastDev = CastingDevice(
-                        id = "chromecast_$ip",
-                        name = "Chromecast / Cast Device ($ip)",
-                        ipAddress = ip,
-                        port = 8009,
-                        protocolType = ProtocolType.CHROMECAST
-                    )
-                    addOrUpdateDevice(chromecastDev)
+                val responseCode = connection.responseCode
+                Log.d(TAG, "Roku device-info request for $ip:$port returned status code: $responseCode")
+                if (responseCode == 200) {
+                    val stream = connection.inputStream
+                    val reader = BufferedReader(InputStreamReader(stream))
+                    val response = StringBuilder()
+                    var line: String?
+                    while (reader.readLine().also { line = it } != null) {
+                        response.append(line)
+                    }
+                    reader.close()
+                    stream.close()
                     
-                    val fireTvDev = CastingDevice(
-                        id = "fire_tv_8009_$ip",
-                        name = "Amazon Fire TV [DIAL 8009] ($ip)",
-                        ipAddress = ip,
-                        port = 8009,
-                        protocolType = ProtocolType.FIRE_TV
-                    )
-                    addOrUpdateDevice(fireTvDev)
-                } else {
+                    val xml = response.toString()
+                    var friendlyName = xml.substringAfter("<user-device-name>", "").substringBefore("</user-device-name>", "").trim()
+                    if (friendlyName.isEmpty()) {
+                        friendlyName = xml.substringAfter("<friendly-device-name>", "").substringBefore("</friendly-device-name>", "").trim()
+                    }
+                    val modelName = xml.substringAfter("<model-name>", "").substringBefore("</model-name>", "").trim()
+                    
+                    val finalName = if (friendlyName.isNotEmpty()) {
+                        if (modelName.isNotEmpty()) "$friendlyName ($modelName)" else friendlyName
+                    } else if (modelName.isNotEmpty()) {
+                        "Roku $modelName ($ip)"
+                    } else {
+                        "Roku Streaming Player ($ip)"
+                    }
+                    
+                    Log.d(TAG, "SUCCESS: Roku device identified successfully. friendlyName=$friendlyName, modelName=$modelName, finalName=$finalName")
+                    
+                    val deviceId = "roku_$ip"
                     val device = CastingDevice(
-                        id = "fire_tv_$ip",
-                        name = "Amazon Fire TV ($ip)",
+                        id = deviceId,
+                        name = finalName,
                         ipAddress = ip,
                         port = port,
-                        protocolType = ProtocolType.FIRE_TV
+                        protocolType = ProtocolType.ROKU,
+                        location = urlString
+                    )
+                    addOrUpdateDevice(device)
+                } else {
+                    Log.w(TAG, "Roku device-info request failed for $ip:$port with status code: $responseCode. Creating fallback device.")
+                    val device = CastingDevice(
+                        id = "roku_$ip",
+                        name = "Roku Caster Receiver ($ip)",
+                        ipAddress = ip,
+                        port = port,
+                        protocolType = ProtocolType.ROKU
                     )
                     addOrUpdateDevice(device)
                 }
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "ERROR: DIAL identification exception for $ip:$port: ${e.message}. Creating fallback devices.", e)
-            if (port == 8009) {
-                val chromecastDev = CastingDevice(
-                    id = "chromecast_$ip",
-                    name = "Chromecast / Cast Device ($ip)",
-                    ipAddress = ip,
-                    port = 8009,
-                    protocolType = ProtocolType.CHROMECAST
-                )
-                addOrUpdateDevice(chromecastDev)
-                
-                val fireTvDev = CastingDevice(
-                    id = "fire_tv_8009_$ip",
-                    name = "Amazon Fire TV [DIAL 8009] ($ip)",
-                    ipAddress = ip,
-                    port = 8009,
-                    protocolType = ProtocolType.FIRE_TV
-                )
-                addOrUpdateDevice(fireTvDev)
-            } else {
+            } catch (e: Exception) {
+                Log.e(TAG, "ERROR: Roku identification exception for $ip:$port: ${e.message}. Creating fallback device.", e)
                 val device = CastingDevice(
-                    id = "fire_tv_$ip",
-                    name = "Amazon Fire TV ($ip)",
+                    id = "roku_$ip",
+                    name = "Roku Caster Receiver ($ip)",
                     ipAddress = ip,
                     port = port,
-                    protocolType = ProtocolType.FIRE_TV
+                    protocolType = ProtocolType.ROKU
                 )
                 addOrUpdateDevice(device)
+            } finally {
+                connection?.disconnect()
             }
-        } finally {
-            connection?.disconnect()
         }
     }
 }
