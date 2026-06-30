@@ -1,3 +1,6 @@
+import java.security.KeyStore as JKeyStore
+import java.io.FileInputStream as JFIS
+
 plugins {
   alias(libs.plugins.android.application)
   alias(libs.plugins.kotlin.compose)
@@ -53,17 +56,45 @@ android {
       isMinifyEnabled = false
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
       
-      // Fallback: If custom release keystore doesn't exist or is not fully configured,
-      // fall back to signing with the persistent debug key (from debug.keystore.base64).
+      // Fallback: If custom release keystore doesn't exist, is corrupted (e.g. suspiciously small),
+      // or fails validation, fall back to signing with the persistent debug key (from debug.keystore.base64).
       // This prevents signature mismatch conflicts and ensures seamless updates.
       val keystorePath = System.getenv("KEYSTORE_PATH") ?: "${rootDir}/streamcast-key.jks"
       val keystoreFile = file(keystorePath)
-      if (keystoreFile.exists() && !System.getenv("STORE_PASSWORD").isNullOrEmpty()) {
+      
+      var isReleaseKeystoreValid = false
+      if (keystoreFile.exists() && keystoreFile.length() > 1024) {
+        val storePass = System.getenv("STORE_PASSWORD")?.trim()
+        val keyAliasVal = System.getenv("KEY_ALIAS")?.trim() ?: "upload"
+        if (!storePass.isNullOrEmpty()) {
+          try {
+            val keystore = JKeyStore.getInstance(JKeyStore.getDefaultType())
+            JFIS(keystoreFile).use { fis ->
+              keystore.load(fis, storePass.toCharArray())
+            }
+            if (keystore.containsAlias(keyAliasVal)) {
+              isReleaseKeystoreValid = true
+            } else {
+              println("Keystore Warning: Alias '$keyAliasVal' not found in keystore. Falling back to debug configuration.")
+            }
+          } catch (e: Exception) {
+            println("Keystore Warning: Failed to open keystore with provided STORE_PASSWORD: ${e.message}. Falling back to debug configuration.")
+          }
+        } else {
+          println("Keystore Warning: STORE_PASSWORD is empty. Falling back to debug configuration.")
+        }
+      } else if (keystoreFile.exists()) {
+        println("Keystore Warning: Keystore file '${keystoreFile.absolutePath}' exists but is suspiciously small (${keystoreFile.length()} bytes), likely corrupted. Falling back to debug configuration.")
+      } else {
+        println("Keystore Info: Keystore file '${keystoreFile.absolutePath}' does not exist. Falling back to debug configuration.")
+      }
+
+      if (isReleaseKeystoreValid) {
         signingConfig = signingConfigs.getByName("release")
         println("Signing release build with custom release keystore: ${keystoreFile.absolutePath}")
       } else {
         signingConfig = signingConfigs.getByName("debugConfig")
-        println("No release keystore found or configured. Falling back to persistent debug key for seamless updates.")
+        println("Falling back to persistent debug key for seamless updates.")
       }
     }
     debug {
