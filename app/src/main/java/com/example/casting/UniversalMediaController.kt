@@ -114,6 +114,8 @@ class UniversalMediaController(private val context: android.content.Context? = n
         .readTimeout(2000, TimeUnit.MILLISECONDS)
         .build()
 
+    private var lastSuccessfulDlnaPort: Int? = null
+
     private val handlers: Map<ProtocolType, CastProtocolHandler> by lazy {
         mapOf(
             ProtocolType.ROKU to RokuCastHandler(okHttpClient)
@@ -184,6 +186,7 @@ class UniversalMediaController(private val context: android.content.Context? = n
 
     fun castMedia(device: CastingDevice, mediaUrl: String, title: String) {
         _activeDevice.value = device
+        lastSuccessfulDlnaPort = null
         _currentTitle.value = title
         _currentUrl.value = mediaUrl
         _state.value = CastingState.CONNECTING
@@ -412,7 +415,8 @@ class UniversalMediaController(private val context: android.content.Context? = n
         }
 
         // 5. Try DLNA Casting on discovered port (e.g. Whisperplay dynamic port)
-        if (device.port > 0 && device.port != 8008 && device.port != 8009 && device.port != 49152 && device.port != 49153 && device.port != 2869) {
+        val standardDlnaPorts = setOf(49152, 49153, 49154, 49155, 49156, 49157, 49158, 49159, 2869, 7676, 8058, 55000, 8080)
+        if (device.port > 0 && device.port != 8008 && device.port != 8009 && device.port !in standardDlnaPorts) {
             Log.d(TAG, "Trying DLNA casting fallback to Fire TV on discovered port ${device.port}")
             if (tryDlnaCastSync(device, device.port, url, title)) {
                 _state.value = CastingState.PLAYING
@@ -423,8 +427,8 @@ class UniversalMediaController(private val context: android.content.Context? = n
             }
         }
 
-        // 6. Try DLNA Casting on standard DLNA Ports: 49152, 49153, 2869
-        val dlnaPorts = listOf(49152, 49153, 2869)
+        // 6. Try DLNA Casting on standard DLNA Ports
+        val dlnaPorts = listOf(49152, 49153, 49154, 49155, 49156, 49157, 49158, 49159, 2869, 7676, 8058, 55000, 8080)
         for (port in dlnaPorts) {
             Log.d(TAG, "Trying DLNA casting fallback to Fire TV on port $port")
             if (tryDlnaCastSync(device, port, url, title)) {
@@ -721,7 +725,7 @@ class UniversalMediaController(private val context: android.content.Context? = n
             Log.d(TAG, "DLNA Cast completed successfully")
         } else {
             // Try standard DLNA ports if the custom discovered port failed
-            val backupPorts = listOf(49152, 49153, 2869)
+            val backupPorts = listOf(49152, 49153, 49154, 49155, 49156, 49157, 49158, 49159, 2869, 7676, 8058, 55000, 8080)
             for (port in backupPorts) {
                 if (port != device.port) {
                     Log.d(TAG, "Retrying DLNA cast on port $port")
@@ -944,6 +948,7 @@ class UniversalMediaController(private val context: android.content.Context? = n
                     Log.d(TAG, "Endpoint $endpoint Play response code: $playCode, success: $playSuccess")
                     if (playSuccess) {
                         Log.d(TAG, "Successfully casted via DLNA to endpoint $endpoint")
+                        lastSuccessfulDlnaPort = port
                         return true
                     } else {
                         Log.e(TAG, "DLNA Play action failed on $endpoint with status code $playCode. SOAP error response: $playBody")
@@ -1146,7 +1151,8 @@ class UniversalMediaController(private val context: android.content.Context? = n
                         okHttpClient.newCall(request).execute().close()
                     }
                     ProtocolType.DLNA, ProtocolType.MIRACAST -> {
-                        val endpoint = "http://${device.ipAddress}:${device.port}/AVTransport/control"
+                        val ctrlPort = lastSuccessfulDlnaPort ?: device.port
+                        val endpoint = "http://${device.ipAddress}:$ctrlPort/AVTransport/control"
                         val action = if (nextState == CastingState.PLAYING) "Play" else "Pause"
                         val soapAction = "\"urn:schemas-upnp-org:service:AVTransport:1#$action\""
                         val soapBody = """
@@ -1169,7 +1175,7 @@ class UniversalMediaController(private val context: android.content.Context? = n
                     }
                     ProtocolType.FIRE_TV -> {
                         // Standard DLNA soap action play/pause for Fire TV media renderer on standard port, or DIAL DELETE on Pause
-                        val port = if (device.port > 0 && device.port != 8008 && device.port != 8009) device.port else 49152
+                        val port = lastSuccessfulDlnaPort ?: (if (device.port > 0 && device.port != 8008 && device.port != 8009) device.port else 49152)
                         val endpoint = "http://${device.ipAddress}:$port/AVTransport/control"
                         val action = if (nextState == CastingState.PLAYING) "Play" else "Pause"
                         val soapAction = "\"urn:schemas-upnp-org:service:AVTransport:1#$action\""
@@ -1284,9 +1290,10 @@ class UniversalMediaController(private val context: android.content.Context? = n
                         val endpoint = "http://${device.ipAddress}:7000/scrub?position=$seconds"
                         val request = Request.Builder().url(endpoint).post("".toRequestBody()).build()
                         okHttpClient.newCall(request).execute().close()
-                    } else if (device.protocolType == ProtocolType.DLNA || device.protocolType == ProtocolType.MIRACAST) {
+                    } else if (device.protocolType == ProtocolType.DLNA || device.protocolType == ProtocolType.MIRACAST || device.protocolType == ProtocolType.FIRE_TV) {
                         val timeStr = formatMsToHms(positionMs)
-                        val endpoint = "http://${device.ipAddress}:${device.port}/AVTransport/control"
+                        val port = lastSuccessfulDlnaPort ?: (if (device.port > 0 && device.port != 8008 && device.port != 8009) device.port else 49152)
+                        val endpoint = "http://${device.ipAddress}:$port/AVTransport/control"
                         val soapAction = "\"urn:schemas-upnp-org:service:AVTransport:1#Seek\""
                         val soapBody = """
                             <?xml version="1.0" encoding="utf-8"?>
@@ -1354,8 +1361,9 @@ class UniversalMediaController(private val context: android.content.Context? = n
                         val endpoint = "http://${device.ipAddress}:7000/volume?value=$volumeFactor"
                         val request = Request.Builder().url(endpoint).post("".toRequestBody()).build()
                         okHttpClient.newCall(request).execute().close()
-                    } else if (device.protocolType == ProtocolType.DLNA || device.protocolType == ProtocolType.MIRACAST) {
-                        val endpoint = "http://${device.ipAddress}:${device.port}/RenderingControl/control"
+                    } else if (device.protocolType == ProtocolType.DLNA || device.protocolType == ProtocolType.MIRACAST || device.protocolType == ProtocolType.FIRE_TV) {
+                        val port = lastSuccessfulDlnaPort ?: (if (device.port > 0 && device.port != 8008 && device.port != 8009) device.port else 49152)
+                        val endpoint = "http://${device.ipAddress}:$port/RenderingControl/control"
                         val soapAction = "\"urn:schemas-upnp-org:service:RenderingControl:1#SetVolume\""
                         val soapBody = """
                             <?xml version="1.0" encoding="utf-8"?>
@@ -1422,7 +1430,8 @@ class UniversalMediaController(private val context: android.content.Context? = n
                             okHttpClient.newCall(request).execute().close()
                         }
                         ProtocolType.DLNA, ProtocolType.MIRACAST -> {
-                            val endpoint = "http://${device.ipAddress}:${device.port}/AVTransport/control"
+                            val port = lastSuccessfulDlnaPort ?: device.port
+                            val endpoint = "http://${device.ipAddress}:$port/AVTransport/control"
                             val soapAction = "\"urn:schemas-upnp-org:service:AVTransport:1#Stop\""
                             val soapBody = """
                                 <?xml version="1.0" encoding="utf-8"?>
@@ -1442,6 +1451,33 @@ class UniversalMediaController(private val context: android.content.Context? = n
                             okHttpClient.newCall(request).execute().close()
                         }
                         ProtocolType.FIRE_TV -> {
+                            // If we have a successful DLNA fallback port, send a DLNA Stop SOAP command first
+                            val dlnaPort = lastSuccessfulDlnaPort
+                            if (dlnaPort != null) {
+                                try {
+                                    val endpoint = "http://${device.ipAddress}:$dlnaPort/AVTransport/control"
+                                    val soapAction = "\"urn:schemas-upnp-org:service:AVTransport:1#Stop\""
+                                    val soapBody = """
+                                        <?xml version="1.0" encoding="utf-8"?>
+                                        <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+                                            <s:Body>
+                                                <u:Stop xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
+                                                    <InstanceID>0</InstanceID>
+                                                </u:Stop>
+                                            </s:Body>
+                                        </s:Envelope>
+                                    """.trimIndent()
+                                    val request = Request.Builder()
+                                        .url(endpoint)
+                                        .post(soapBody.toRequestBody("text/xml; charset=\"utf-8\"".toMediaType()))
+                                        .header("SOAPACTION", soapAction)
+                                        .build()
+                                    okHttpClient.newCall(request).execute().close()
+                                } catch (e: Exception) {
+                                    Log.e(TAG, "Failed DLNA Stop fallback command on Fire TV: ${e.message}")
+                                }
+                            }
+
                             // Stop casting by sending a DIAL DELETE request to the running application instances
                             val ports = if (device.port == 8009) listOf(8009, 8008) else listOf(8008, 8009)
                             val dialEndpoints = mutableListOf<String>()

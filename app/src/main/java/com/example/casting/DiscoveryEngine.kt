@@ -563,6 +563,24 @@ class DiscoveryEngine(private val context: Context) {
     }
 
     private fun addOrUpdateDevice(device: CastingDevice) {
+        val gatewayIp = getGatewayIpAddress()
+        if (device.ipAddress == gatewayIp) {
+            Log.d(TAG, "Filtering out device because it matches gateway IP: ${device.ipAddress}")
+            return
+        }
+
+        val lowerName = device.name.lowercase()
+        val routerKeywords = listOf(
+            "router", "gateway", "modem", "ap ", "accesspoint", 
+            "access point", "broadband", "linksys", "netgear", 
+            "tp-link", "tplink", "d-link", "dlink", "asus", 
+            "synology", "unifi", "ubiquiti", "mikrotik", "pfsense"
+        )
+        if (routerKeywords.any { lowerName.contains(it) }) {
+            Log.d(TAG, "Filtering out router/gateway device based on name: ${device.name}")
+            return
+        }
+
         activeDevicesMap[device.id] = device
         updateDevicesFlow()
     }
@@ -577,6 +595,23 @@ class DiscoveryEngine(private val context: Context) {
         return if (lastDotIndex != -1) {
             ip.substring(0, lastDotIndex + 1)
         } else {
+            null
+        }
+    }
+
+    private fun getGatewayIpAddress(): String? {
+        return try {
+            val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+            val dhcpInfo = wifiManager.dhcpInfo
+            val gateway = dhcpInfo?.gateway ?: 0
+            if (gateway != 0) {
+                @Suppress("DEPRECATION")
+                android.text.format.Formatter.formatIpAddress(gateway)
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to get gateway IP: ${e.message}")
             null
         }
     }
@@ -621,7 +656,8 @@ class DiscoveryEngine(private val context: Context) {
     private fun scanSubnetForCastingDevices() {
         val prefix = getSubnetPrefix() ?: return
         val localIp = getLocalIpAddress()
-        Log.d(TAG, "Starting subnet scan on prefix: $prefix")
+        val gatewayIp = getGatewayIpAddress()
+        Log.d(TAG, "Starting subnet scan on prefix: $prefix (Gateway: $gatewayIp)")
         
         discoveryScope?.launch(Dispatchers.IO) {
             val semaphore = Semaphore(30) // Limit concurrent active host probes to 30
@@ -630,6 +666,7 @@ class DiscoveryEngine(private val context: Context) {
                     semaphore.withPermit {
                         val ip = "$prefix$hostId"
                         if (ip == localIp) return@withPermit // Skip self
+                        if (ip == gatewayIp) return@withPermit // Skip gateway router
                         
                         // Execute sequential port checks on a single host to avoid multiplexing issues
                         checkPortAndIdentifyDevice(ip, 8008)

@@ -4209,11 +4209,12 @@ fun StreamCastDashboardResponsive(
             }
         }
         val filter = IntentFilter(com.example.service.UpdateCheckService.ACTION_UPDATE_RESULT)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            context.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
-        } else {
-            context.registerReceiver(receiver, filter)
-        }
+        androidx.core.content.ContextCompat.registerReceiver(
+            context,
+            receiver,
+            filter,
+            androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED
+        )
         
         onDispose {
             context.unregisterReceiver(receiver)
