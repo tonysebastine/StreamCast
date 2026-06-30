@@ -56,30 +56,7 @@ jobs:
         run: |
           if [ -n "$KEYSTORE_BASE64" ]; then
             echo "Decoding release keystore..."
-            python3 -c "
-import os, base64
-data = os.environ.get('KEYSTORE_BASE64', '').strip()
-# Remove all whitespace, newlines, and carriage returns
-data = ''.join(data.split())
-# Recalculate and fix any truncated padding from copy-paste
-data = data.rstrip('=')
-missing_padding = len(data) % 4
-if missing_padding == 1:
-    data += '==='
-elif missing_padding == 2:
-    data += '=='
-elif missing_padding == 3:
-    data += '='
-try:
-    decoded = base64.b64decode(data)
-    with open('app/release.jks', 'wb') as f:
-        f.write(decoded)
-    print('Release keystore decoded successfully using Python.')
-except Exception as e:
-    print('Python decoding failed, attempting standard shell fallback:', str(e))
-    import subprocess
-    subprocess.run('echo \"$KEYSTORE_BASE64\" | base64 -d > app/release.jks || echo \"$KEYSTORE_BASE64\" | base64 --decode > app/release.jks', shell=True)
-"
+            python3 decode_keystore.py
           else
             echo "No KEYSTORE_BASE64 secret provided. Skipping release keystore decode."
           fi
