@@ -26,14 +26,8 @@ android {
       val keystorePath = System.getenv("KEYSTORE_PATH") ?: "${rootDir}/my-upload-key.jks"
       storeFile = file(keystorePath)
       storePassword = System.getenv("STORE_PASSWORD")
-      keyAlias = "upload"
+      keyAlias = System.getenv("KEY_ALIAS")
       keyPassword = System.getenv("KEY_PASSWORD")
-    }
-    create("debugConfig") {
-      storeFile = file("${rootDir}/debug.keystore")
-      storePassword = "android"
-      keyAlias = "androiddebugkey"
-      keyPassword = "android"
     }
   }
 
@@ -42,22 +36,9 @@ android {
       isCrunchPngs = false
       isMinifyEnabled = false
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-      
-      // Fallback: If custom release keystore doesn't exist or is not fully configured,
-      // fall back to signing with the persistent debug key (from debug.keystore.base64).
-      // This prevents signature mismatch conflicts and ensures seamless updates.
-      val keystorePath = System.getenv("KEYSTORE_PATH") ?: "${rootDir}/my-upload-key.jks"
-      val keystoreFile = file(keystorePath)
-      if (keystoreFile.exists() && !System.getenv("STORE_PASSWORD").isNullOrEmpty()) {
-        signingConfig = signingConfigs.getByName("release")
-        println("Signing release build with custom release keystore: ${keystoreFile.absolutePath}")
-      } else {
-        signingConfig = signingConfigs.getByName("debugConfig")
-        println("No release keystore found or configured. Falling back to persistent debug key for seamless updates.")
-      }
+      signingConfig = signingConfigs.getByName("release")
     }
     debug {
-      signingConfig = signingConfigs.getByName("debugConfig")
     }
   }
   compileOptions {
