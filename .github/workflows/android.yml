@@ -61,6 +61,29 @@ jobs:
             echo "No KEYSTORE_BASE64 secret provided. Skipping release keystore decode."
           fi
 
+      - name: Verify Keystore and Diagnostic Info
+        run: |
+          echo "Checking release keystore status..."
+          if [ -f app/release.jks ]; then
+            echo "Keystore file found: app/release.jks ($(stat -c%s app/release.jks) bytes)"
+            CHECK_PASS="${STORE_PASSWORD:-android}"
+            echo "Attempting to list keystore contents (using provided password or fallback 'android')..."
+            if keytool -list -v -keystore app/release.jks -storepass "$CHECK_PASS" > keystore_info.txt 2>/dev/null; then
+              echo "Successfully read keystore!"
+              echo "---- Keystore Aliases found ----"
+              grep -E "Alias name:|Entry type:|Creation date:" keystore_info.txt || true
+              echo "--------------------------------"
+            else
+              echo "ERROR: Failed to open keystore with STORE_PASSWORD or 'android'."
+              echo "Please check if your STORE_PASSWORD secret is correct and matches the password of the original keystore file."
+            fi
+            rm -f keystore_info.txt
+          else
+            echo "No release keystore file found."
+          fi
+        env:
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+
       - name: Build APKs
         run: |
           if [ -f app/release.jks ]; then

@@ -26,13 +26,17 @@ android {
       val keystorePath = System.getenv("KEYSTORE_PATH") ?: "${rootDir}/streamcast-key.jks"
       storeFile = file(keystorePath)
       
-      val storePass = System.getenv("STORE_PASSWORD")?.trim()
+      val envStorePass = System.getenv("STORE_PASSWORD")?.trim()
+      val storePass = if (envStorePass.isNullOrEmpty()) "android" else envStorePass
+      
       val keyAliasVal = System.getenv("KEY_ALIAS")?.trim() ?: "upload"
-      val keyPass = System.getenv("KEY_PASSWORD")?.trim()
+      
+      val envKeyPass = System.getenv("KEY_PASSWORD")?.trim()
+      val keyPass = if (envKeyPass.isNullOrEmpty()) storePass else envKeyPass
       
       storePassword = storePass
       keyAlias = keyAliasVal
-      keyPassword = if (keyPass.isNullOrEmpty()) storePass else keyPass
+      keyPassword = keyPass
     }
     create("debugConfig") {
       storeFile = file("${rootDir}/debug.keystore")
