@@ -50,20 +50,51 @@ jobs:
             keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
           fi
 
-      - name: Build Debug APK
-        run: gradle assembleDebug
+      - name: Decode Release Keystore
+        if: ${{ secrets.KEYSTORE_BASE64 != '' && secrets.STORE_PASSWORD != '' && secrets.KEY_ALIAS != '' && secrets.KEY_PASSWORD != '' }}
+        run: |
+          echo "Decoding release keystore..."
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > app/release.jks
 
-      - name: Upload Debug APK
+      - name: Build APKs
+        run: |
+          if [ -f app/release.jks ]; then
+            echo "Release keystore found. Building signed release APK..."
+            gradle assembleRelease
+          else
+            echo "No release keystore found. Building debug APK..."
+            gradle assembleDebug
+          fi
+        env:
+          KEYSTORE_PATH: release.jks
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+
+      - name: Locate and Prepare Release Artifact
+        id: prepare_artifact
+        run: |
+          if [ -f app/build/outputs/apk/release/app-release.apk ]; then
+            echo "Using signed release APK..."
+            echo "apk_path=app/build/outputs/apk/release/app-release.apk" >> $GITHUB_OUTPUT
+            echo "apk_name=StreamCast-Release-v${{ github.run_number }}.apk" >> $GITHUB_OUTPUT
+          else
+            echo "Using debug APK as fallback..."
+            echo "apk_path=app/build/outputs/apk/debug/app-debug.apk" >> $GITHUB_OUTPUT
+            echo "apk_name=StreamCast-Debug-v${{ github.run_number }}.apk" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Upload Built APK
         uses: actions/upload-artifact@v4
         with:
-          name: StreamCast-Debug-APK
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: StreamCast-APK
+          path: ${{ steps.prepare_artifact.outputs.apk_path }}
           retention-days: 14
 
-      - name: Rename APK for Release
+      - name: Copy APK to Release Name
         if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
         run: |
-          cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/StreamCast-alpha-v${{ github.run_number }}.apk
+          cp ${{ steps.prepare_artifact.outputs.apk_path }} app/build/outputs/apk/${{ steps.prepare_artifact.outputs.apk_name }}
 
       - name: Generate Changelog
         if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
@@ -95,6 +126,6 @@ jobs:
           body_path: release_notes.md
           draft: false
           prerelease: true
-          files: app/build/outputs/apk/debug/StreamCast-alpha-v${{ github.run_number }}.apk
+          files: app/build/outputs/apk/${{ steps.prepare_artifact.outputs.apk_name }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
