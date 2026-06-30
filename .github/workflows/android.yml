@@ -56,7 +56,34 @@ jobs:
         run: |
           if [ -n "$KEYSTORE_BASE64" ]; then
             echo "Decoding release keystore..."
-            echo "$KEYSTORE_BASE64" | base64 -di > app/release.jks
+            # Clean base64 input from any carriage returns, newlines, or spaces
+            CLEANED_BASE64=$(printf '%s' "$KEYSTORE_BASE64" | tr -d '\r\n ')
+            
+            # Recalculate padding if it was truncated or stripped during copy-paste
+            # Strip any trailing '=' first to recalculate cleanly
+            STRIPPED_BASE64=$(printf '%s' "$CLEANED_BASE64" | sed 's/=*$//')
+            PADDING_LEN=$(( (4 - (${#STRIPPED_BASE64} % 4)) % 4 ))
+            if [ $PADDING_LEN -eq 1 ]; then
+              CLEANED_BASE64="${STRIPPED_BASE64}="
+            elif [ $PADDING_LEN -eq 2 ]; then
+              CLEANED_BASE64="${STRIPPED_BASE64}=="
+            elif [ $PADDING_LEN -eq 3 ]; then
+              CLEANED_BASE64="${STRIPPED_BASE64}==="
+            else
+              CLEANED_BASE64="$STRIPPED_BASE64"
+            fi
+            
+            # Attempt multiple decoders sequentially for maximal resilience
+            if printf '%s' "$CLEANED_BASE64" | base64 -d > app/release.jks 2>/dev/null; then
+              echo "Release keystore decoded successfully using standard base64."
+            elif printf '%s' "$CLEANED_BASE64" | base64 --decode --ignore-garbage > app/release.jks 2>/dev/null; then
+              echo "Release keystore decoded successfully using base64 ignore-garbage."
+            elif printf '%s' "$CLEANED_BASE64" | openssl base64 -d -A > app/release.jks 2>/dev/null; then
+              echo "Release keystore decoded successfully using openssl."
+            else
+              echo "Advanced decoding failed, attempting standard fallback..."
+              printf '%s' "$KEYSTORE_BASE64" | base64 -di > app/release.jks
+            fi
           else
             echo "No KEYSTORE_BASE64 secret provided. Skipping release keystore decode."
           fi
