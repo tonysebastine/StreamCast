@@ -23,7 +23,7 @@ android {
 
   signingConfigs {
     create("release") {
-      val keystorePath = System.getenv("KEYSTORE_PATH") ?: "${rootDir}/my-upload-key.jks"
+      val keystorePath = System.getenv("KEYSTORE_PATH") ?: "${rootDir}/streamcast-key.jks"
       storeFile = file(keystorePath)
       storePassword = System.getenv("STORE_PASSWORD")
       keyAlias = System.getenv("KEY_ALIAS") ?: "upload"
@@ -46,7 +46,7 @@ android {
       // Fallback: If custom release keystore doesn't exist or is not fully configured,
       // fall back to signing with the persistent debug key (from debug.keystore.base64).
       // This prevents signature mismatch conflicts and ensures seamless updates.
-      val keystorePath = System.getenv("KEYSTORE_PATH") ?: "${rootDir}/my-upload-key.jks"
+      val keystorePath = System.getenv("KEYSTORE_PATH") ?: "${rootDir}/streamcast-key.jks"
       val keystoreFile = file(keystorePath)
       if (keystoreFile.exists() && !System.getenv("STORE_PASSWORD").isNullOrEmpty()) {
         signingConfig = signingConfigs.getByName("release")

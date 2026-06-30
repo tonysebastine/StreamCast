@@ -51,10 +51,15 @@ jobs:
           fi
 
       - name: Decode Release Keystore
-        if: ${{ secrets.KEYSTORE_BASE64 != '' && secrets.STORE_PASSWORD != '' && secrets.KEY_ALIAS != '' && secrets.KEY_PASSWORD != '' }}
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
         run: |
-          echo "Decoding release keystore..."
-          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > app/release.jks
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "Decoding release keystore..."
+            echo "$KEYSTORE_BASE64" | base64 -d > app/release.jks
+          else
+            echo "No KEYSTORE_BASE64 secret provided. Skipping release keystore decode."
+          fi
 
       - name: Build APKs
         run: |
