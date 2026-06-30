@@ -1,0 +1,1 @@
+keytool -genkeypair -v -keystore streamcast-key.jks -alias streamkey -keyalg RSA -keysize 2048 -validity 10000
