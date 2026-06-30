@@ -56,7 +56,7 @@ jobs:
         run: |
           if [ -n "$KEYSTORE_BASE64" ]; then
             echo "Decoding release keystore..."
-            echo "$KEYSTORE_BASE64" | base64 -d > app/release.jks
+            echo "$KEYSTORE_BASE64" | base64 -di > app/release.jks
           else
             echo "No KEYSTORE_BASE64 secret provided. Skipping release keystore decode."
           fi
