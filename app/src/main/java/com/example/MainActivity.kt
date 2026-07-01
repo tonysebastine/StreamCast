@@ -196,7 +196,7 @@ fun StreamCastDashboardOld(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var selectedTab by remember { mutableIntStateOf(0) }
-    var isSmartIslandEnabled by remember { mutableStateOf(true) }
+    var isSmartIslandEnabled by remember { mutableStateOf(false) }
     var isSmartIslandExpanded by remember { mutableStateOf(false) }
     var expandedReleaseVersion by remember { mutableStateOf("1.2") }
 
@@ -4150,7 +4150,7 @@ fun StreamCastDashboardResponsive(
     
     val scope = rememberCoroutineScope()
     var selectedTab by remember { mutableIntStateOf(0) }
-    var isSmartIslandEnabled by remember { mutableStateOf(isOriginOsDevice()) }
+    var isSmartIslandEnabled by remember { mutableStateOf(false) }
     var isSmartIslandExpanded by remember { mutableStateOf(false) }
     var expandedReleaseVersion by remember { mutableStateOf("1.2") }
 
