@@ -295,7 +295,7 @@ fun StreamCastDashboardOld(
     val bookmarks by viewModel.bookmarks.collectAsStateWithLifecycle()
     val castHistory by viewModel.castHistory.collectAsStateWithLifecycle()
     
-    var activeBrowserUrl by remember { mutableStateOf("https://archive.org/details/classic_cartoons") }
+    var activeBrowserUrl by remember { mutableStateOf("about:home") }
     var searchQuery by remember { mutableStateOf("") }
     val manualDevices = remember { mutableStateListOf<CastingDevice>() }
     
@@ -1076,6 +1076,8 @@ fun StreamCastDashboardOld(
                                 Toast.makeText(context, "Added Bookmark: $title", Toast.LENGTH_SHORT).show()
                             },
                             onUrlChanged = { activeBrowserUrl = it },
+                            bookmarks = bookmarks,
+                            onDeleteBookmark = { viewModel.removeBookmark(it) },
                             onVideoSelectedForCasting = { sniffedVideo ->
                                 val target = selectedCastingTarget
                                 if (target == null) {
@@ -4120,7 +4122,8 @@ fun StreamCastDashboardResponsive(
     val bookmarks by viewModel.bookmarks.collectAsStateWithLifecycle()
     val castHistory by viewModel.castHistory.collectAsStateWithLifecycle()
     
-    var activeBrowserUrl by remember { mutableStateOf("https://archive.org/details/classic_cartoons") }
+    val browserPrefs = remember { context.getSharedPreferences("browser_settings", android.content.Context.MODE_PRIVATE) }
+    var activeBrowserUrl by remember { mutableStateOf(browserPrefs.getString("homepage_url", "about:home") ?: "about:home") }
     var searchQuery by remember { mutableStateOf("") }
     val manualDevices = remember { mutableStateListOf<CastingDevice>() }
 
@@ -4551,6 +4554,8 @@ fun StreamCastDashboardResponsive(
                                             Toast.makeText(context, "Added Bookmark: $title", Toast.LENGTH_SHORT).show()
                                         },
                                         onUrlChanged = { activeBrowserUrl = it },
+                                        bookmarks = bookmarks,
+                                        onDeleteBookmark = { viewModel.removeBookmark(it) },
                                         onVideoSelectedForCasting = { sniffedVideo ->
                                             val target = selectedCastingTarget
                                             if (target == null) {
@@ -4817,6 +4822,8 @@ fun StreamCastDashboardResponsive(
                                                 Toast.makeText(context, "Added Bookmark: $title", Toast.LENGTH_SHORT).show()
                                             },
                                             onUrlChanged = { activeBrowserUrl = it },
+                                            bookmarks = bookmarks,
+                                            onDeleteBookmark = { viewModel.removeBookmark(it) },
                                             onVideoSelectedForCasting = { sniffedVideo ->
                                                 val target = selectedCastingTarget
                                                 if (target == null) {
