@@ -4357,31 +4357,43 @@ fun StreamCastDashboardResponsive(
                         )
                     }
                     // Screen switching tab selector
-                    NavigationBar(
+                    Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .windowInsetsPadding(WindowInsets.navigationBars)
-                            .testTag("app_navigation_bar"),
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant
+                            .background(MaterialTheme.colorScheme.surface)
                     ) {
-                        NavigationBarItem(
-                            selected = selectedTab == 0,
-                            onClick = { selectedTab = 0 },
-                            icon = { Icon(Icons.Default.Wifi, contentDescription = "Devices tab") },
-                            label = { Text("Scanner", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
-                        )
-                        NavigationBarItem(
-                            selected = selectedTab == 1,
-                            onClick = { selectedTab = 1 },
-                            icon = { Icon(Icons.Default.Language, contentDescription = "Browser tab") },
-                            label = { Text("Web Video", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
-                        )
-                        NavigationBarItem(
-                            selected = selectedTab == 2,
-                            onClick = { selectedTab = 2 },
-                            icon = { Icon(Icons.Default.Info, contentDescription = "Remote & Help Tab") },
-                            label = { Text("Remote & Help", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
-                        )
+                        Column {
+                            HorizontalDivider(
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
+                                thickness = 1.dp
+                            )
+                            NavigationBar(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .windowInsetsPadding(WindowInsets.navigationBars)
+                                    .testTag("app_navigation_bar"),
+                                containerColor = Color.Transparent
+                            ) {
+                                NavigationBarItem(
+                                    selected = selectedTab == 0,
+                                    onClick = { selectedTab = 0 },
+                                    icon = { Icon(Icons.Default.Wifi, contentDescription = "Devices tab") },
+                                    label = { Text("Scanner", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                                )
+                                NavigationBarItem(
+                                    selected = selectedTab == 1,
+                                    onClick = { selectedTab = 1 },
+                                    icon = { Icon(Icons.Default.Language, contentDescription = "Browser tab") },
+                                    label = { Text("Web Video", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                                )
+                                NavigationBarItem(
+                                    selected = selectedTab == 2,
+                                    onClick = { selectedTab = 2 },
+                                    icon = { Icon(Icons.Default.Info, contentDescription = "Remote & Help Tab") },
+                                    label = { Text("Remote & Help", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -4471,20 +4483,7 @@ fun StreamCastDashboardResponsive(
                                                         .fillMaxWidth()
                                                         .padding(24.dp)
                                                 ) {
-                                                    Box(
-                                                        modifier = Modifier
-                                                            .size(60.dp)
-                                                            .clip(CircleShape)
-                                                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)),
-                                                        contentAlignment = Alignment.Center
-                                                    ) {
-                                                        Icon(
-                                                            imageVector = Icons.Default.Tv,
-                                                            contentDescription = "Searching for Casting receivers",
-                                                            tint = MaterialTheme.colorScheme.primary,
-                                                            modifier = Modifier.size(32.dp)
-                                                        )
-                                                    }
+                                                    com.example.ui.components.ScanningRadarAnimation()
                                                     Text(
                                                         text = "Scanning Local Network...",
                                                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
@@ -4718,20 +4717,7 @@ fun StreamCastDashboardResponsive(
                                                             .fillMaxWidth()
                                                             .padding(24.dp)
                                                     ) {
-                                                        Box(
-                                                            modifier = Modifier
-                                                                .size(60.dp)
-                                                                .clip(CircleShape)
-                                                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)),
-                                                            contentAlignment = Alignment.Center
-                                                        ) {
-                                                            Icon(
-                                                                imageVector = Icons.Default.Tv,
-                                                                contentDescription = "Searching for Casting receivers",
-                                                                tint = MaterialTheme.colorScheme.primary,
-                                                                modifier = Modifier.size(32.dp)
-                                                            )
-                                                        }
+                                                        com.example.ui.components.ScanningRadarAnimation()
                                                         Text(
                                                             text = "Scanning Local Network...",
                                                             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),

@@ -32,6 +32,94 @@ import com.example.casting.CastingDevice
 import com.example.casting.LocalNetworkPermissionHelper
 import com.example.casting.ProtocolType
 
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color as ComposeColor
+
+@Composable
+fun ScanningRadarAnimation(modifier: Modifier = Modifier) {
+    val infiniteTransition = rememberInfiniteTransition(label = "RadarScan")
+    val progress1 = infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(2400, easing = LinearOutSlowInEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "radius1"
+    )
+    val progress2 = infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(2400, delayMillis = 800, easing = LinearOutSlowInEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "radius2"
+    )
+    val progress3 = infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(2400, delayMillis = 1600, easing = LinearOutSlowInEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "radius3"
+    )
+
+    Box(
+        modifier = modifier.size(150.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        // Radar waves
+        listOf(progress1, progress2, progress3).forEach { progressState ->
+            val progress = progressState.value
+            Box(
+                modifier = Modifier
+                    .size((150 * progress).dp)
+                    .clip(CircleShape)
+                    .background(
+                        MaterialTheme.colorScheme.primary.copy(alpha = (1f - progress) * 0.15f)
+                    )
+                    .border(
+                        width = 1.dp,
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = (1f - progress) * 0.4f),
+                        shape = CircleShape
+                    )
+            )
+        }
+        
+        // Center icon
+        Box(
+            modifier = Modifier
+                .size(64.dp)
+                .clip(CircleShape)
+                .background(
+                    Brush.radialGradient(
+                        colors = listOf(
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.25f),
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.05f)
+                        )
+                    )
+                )
+                .border(2.dp, MaterialTheme.colorScheme.primary, CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Default.Tv,
+                contentDescription = "Searching",
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(32.dp)
+            )
+        }
+    }
+}
+
 @Composable
 fun DeviceRowItem(
     device: CastingDevice,
@@ -39,12 +127,12 @@ fun DeviceRowItem(
     onSelect: () -> Unit
 ) {
     val brandColor = when (device.protocolType) {
-        ProtocolType.MIRACAST -> Color(0xFFE91E63)
-        ProtocolType.CHROMECAST -> Color(0xFF4285F4)
-        ProtocolType.ROKU -> Color(0xFF8A2BE2)
-        ProtocolType.FIRE_TV -> Color(0xFFFF9900)
-        ProtocolType.AIRPLAY -> Color(0xFF007AFF)
-        ProtocolType.DLNA -> Color(0xFF4CAF50)
+        ProtocolType.MIRACAST -> ComposeColor(0xFFE91E63)
+        ProtocolType.CHROMECAST -> ComposeColor(0xFF4285F4)
+        ProtocolType.ROKU -> ComposeColor(0xFF8A2BE2)
+        ProtocolType.FIRE_TV -> ComposeColor(0xFFFF9900)
+        ProtocolType.AIRPLAY -> ComposeColor(0xFF007AFF)
+        ProtocolType.DLNA -> ComposeColor(0xFF4CAF50)
     }
     
     val brandLabel = when (device.protocolType) {
@@ -56,14 +144,17 @@ fun DeviceRowItem(
         ProtocolType.MIRACAST -> "Miracast (Wi-Fi Direct)"
     }
 
+    val animatedBorderColor = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+    val animatedBorderWidth = if (isSelected) 2.dp else 1.dp
+
     Card(
         shape = RoundedCornerShape(16.dp),
         modifier = Modifier
             .fillMaxWidth()
             .border(
                 BorderStroke(
-                    width = 1.dp,
-                    color = if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.2f) else MaterialTheme.colorScheme.outline
+                    width = animatedBorderWidth,
+                    color = animatedBorderColor
                 ),
                 shape = RoundedCornerShape(16.dp)
             )
@@ -72,9 +163,9 @@ fun DeviceRowItem(
             },
         colors = CardDefaults.cardColors(
             containerColor = if (isSelected) 
-                MaterialTheme.colorScheme.tertiary 
+                MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
             else 
-                MaterialTheme.colorScheme.surfaceVariant
+                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
