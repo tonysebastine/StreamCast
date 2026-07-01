@@ -1,6 +1,6 @@
 package com.example.casting
 
-import android.util.Log
+import com.example.AppLogger as Log
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody

@@ -2,7 +2,7 @@ package com.example.browser
 
 import android.annotation.SuppressLint
 import android.content.Context
-import android.util.Log
+import com.example.AppLogger as Log
 import android.webkit.JavascriptInterface
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
