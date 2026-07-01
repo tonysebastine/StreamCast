@@ -274,10 +274,10 @@ class DiscoveryEngine(private val context: Context) {
                 identifyRokuDevice(host, port)
             }
             ProtocolType.DLNA -> {
-                identifyDlnaDeviceAsync(host, port)
+                identifyDlnaDeviceAsync(host, port, fallbackName = rawName)
             }
             ProtocolType.FIRE_TV -> {
-                identifyDialDeviceAsync(host, port)
+                identifyDialDeviceAsync(host, port, fallbackName = rawName)
             }
             else -> {
                 val friendlyName = when (protocolType) {
@@ -585,8 +585,123 @@ class DiscoveryEngine(private val context: Context) {
         updateDevicesFlow()
     }
 
+    private fun isNameGeneric(name: String, ip: String): Boolean {
+        if (name.isEmpty()) return true
+        val trimmed = name.trim()
+        if (trimmed.contains("($ip)")) return true
+        if (trimmed.contains("[DIAL 8009]")) return true
+        if (trimmed.contains("AirScreen", ignoreCase = true)) return true
+        if (trimmed.contains("AirPlay", ignoreCase = true)) return true
+        if (trimmed.contains("port", ignoreCase = true)) return true
+        if (trimmed.startsWith("AS-", ignoreCase = true)) return true
+        
+        // Regex to match any 4-5 digit ports or numbers in parentheses/brackets/braces, e.g., (6000), (60000), [60000]
+        val portRegex = Regex("""[\(\[\{]\d{4,5}[\)\]\}]""")
+        if (portRegex.containsMatchIn(trimmed)) return true
+        
+        val genericKeywords = listOf(
+            "Chromecast / Cast Device",
+            "Chromecast / DIAL Device",
+            "Amazon Fire TV",
+            "DLNA Smart TV",
+            "Roku Caster Receiver",
+            "LAN Cast Receiver",
+            "Miracast Screen Adapter",
+            "Roku Streaming Player",
+            "Roku Streaming",
+            "DLNA TV",
+            "Smart TV",
+            "Cast Device",
+            "Receiver"
+        )
+        return genericKeywords.any { trimmed.startsWith(it, ignoreCase = true) }
+    }
+
+    private fun cleanFriendlyName(name: String): String {
+        var clean = name
+        val suffixesToRemove = listOf(
+            " (Fire TV DLNA)",
+            " (Fire TV)",
+            " (DIAL Device)",
+            " (DLNA TV)",
+            " [DIAL 8009]"
+        )
+        for (suffix in suffixesToRemove) {
+            clean = clean.replace(suffix, "")
+        }
+        return clean.trim()
+    }
+
+    private fun mergeDevicesByIp(devicesList: List<CastingDevice>): List<CastingDevice> {
+        val grouped = devicesList.groupBy { it.ipAddress }
+        val mergedList = mutableListOf<CastingDevice>()
+
+        for ((ip, devices) in grouped) {
+            if (devices.size == 1) {
+                val singleDev = devices.first()
+                val cleanedName = cleanFriendlyName(singleDev.name)
+                mergedList.add(singleDev.copy(name = cleanedName))
+                continue
+            }
+
+            // Find the best name: non-generic is preferred
+            var bestName = ""
+            for (d in devices) {
+                val currentBestGeneric = isNameGeneric(bestName, ip)
+                val deviceNameGeneric = isNameGeneric(d.name, ip)
+
+                if (bestName.isEmpty()) {
+                    bestName = d.name
+                } else if (currentBestGeneric && !deviceNameGeneric) {
+                    // New name is non-generic, override
+                    bestName = d.name
+                } else if (!currentBestGeneric && !deviceNameGeneric) {
+                    // Both are non-generic, prefer the one that is cleaner
+                    val dHasAir = d.name.contains("AirScreen", ignoreCase = true) || d.name.contains("AirPlay", ignoreCase = true)
+                    val bHasAir = bestName.contains("AirScreen", ignoreCase = true) || bestName.contains("AirPlay", ignoreCase = true)
+                    if (bHasAir && !dHasAir) {
+                        bestName = d.name
+                    } else if (bHasAir == dHasAir) {
+                        if (d.name.length > bestName.length) {
+                            bestName = d.name
+                        }
+                    }
+                }
+            }
+
+            val cleanName = cleanFriendlyName(bestName)
+
+            // Find the best protocol/device to use for casting
+            // Hierarchy of protocols: FIRE_TV, DLNA, ROKU, AIRPLAY, CHROMECAST, MIRACAST
+            val protocolPriority = listOf(
+                ProtocolType.FIRE_TV,
+                ProtocolType.DLNA,
+                ProtocolType.ROKU,
+                ProtocolType.AIRPLAY,
+                ProtocolType.CHROMECAST,
+                ProtocolType.MIRACAST
+            )
+
+            var selectedDevice = devices.first()
+            var selectedPriority = Int.MAX_VALUE
+            for (d in devices) {
+                val priority = protocolPriority.indexOf(d.protocolType)
+                if (priority != -1 && priority < selectedPriority) {
+                    selectedDevice = d
+                    selectedPriority = priority
+                }
+            }
+
+            val mergedDevice = selectedDevice.copy(name = cleanName)
+            mergedList.add(mergedDevice)
+        }
+
+        return mergedList
+    }
+
     private fun updateDevicesFlow() {
-        _devices.value = activeDevicesMap.values.toList().sortedBy { it.name }
+        val merged = mergeDevicesByIp(activeDevicesMap.values.toList())
+        _devices.value = merged.sortedBy { it.name }
     }
 
     private fun getSubnetPrefix(): String? {
@@ -707,7 +822,7 @@ class DiscoveryEngine(private val context: Context) {
         }
     }
 
-    private fun identifyDlnaDeviceAsync(ip: String, port: Int, locationUrl: String? = null) {
+    private fun identifyDlnaDeviceAsync(ip: String, port: Int, locationUrl: String? = null, fallbackName: String? = null) {
         discoveryScope?.launch(Dispatchers.IO) {
             val locations = if (locationUrl != null) {
                 listOf(locationUrl)
@@ -754,7 +869,7 @@ class DiscoveryEngine(private val context: Context) {
                                 "$friendlyName (DLNA TV)"
                             }
                         } else {
-                            "DLNA Smart TV ($ip)"
+                            fallbackName ?: "DLNA Smart TV ($ip)"
                         }
                         
                         Log.d(TAG, "SUCCESS: DLNA device identified successfully at $loc. friendlyName=$friendlyName, manufacturer=$manufacturer, finalName=$finalName")
@@ -785,7 +900,7 @@ class DiscoveryEngine(private val context: Context) {
             val deviceId = "dlna_${port}_$ip"
             val device = CastingDevice(
                 id = deviceId,
-                name = "DLNA Smart TV ($ip)",
+                name = fallbackName ?: "DLNA Smart TV ($ip)",
                 ipAddress = ip,
                 port = port,
                 protocolType = ProtocolType.DLNA
@@ -794,7 +909,7 @@ class DiscoveryEngine(private val context: Context) {
         }
     }
 
-    private fun identifyDialDeviceAsync(ip: String, port: Int = 8008, locationUrl: String? = null) {
+    private fun identifyDialDeviceAsync(ip: String, port: Int = 8008, locationUrl: String? = null, fallbackName: String? = null) {
         discoveryScope?.launch(Dispatchers.IO) {
             val urlString = locationUrl ?: "http://$ip:$port/ssdp/device-desc.xml"
             Log.d(TAG, "Starting DIAL identification scan on $ip:$port via: $urlString")
@@ -831,7 +946,11 @@ class DiscoveryEngine(private val context: Context) {
                     val finalName = if (friendlyName.isNotEmpty()) {
                         if (isAmazon) "$friendlyName (Fire TV)" else "$friendlyName (DIAL Device)"
                     } else {
-                        if (isAmazon) "Amazon Fire TV ($ip)" else "Chromecast / DIAL Device ($ip)"
+                        if (isAmazon) {
+                            fallbackName ?: "Amazon Fire TV ($ip)"
+                        } else {
+                            fallbackName ?: "Chromecast / DIAL Device ($ip)"
+                        }
                     }
                     
                     Log.d(TAG, "SUCCESS: DIAL device identified successfully. friendlyName=$friendlyName, modelName=$modelName, manufacturer=$manufacturer, isAmazon=$isAmazon, finalName=$finalName")
@@ -850,22 +969,22 @@ class DiscoveryEngine(private val context: Context) {
                     addOrUpdateDevice(device)
                 } else {
                     Log.w(TAG, "DIAL description request failed for $ip:$port with status code: $responseCode. Creating fallback devices.")
-                    createDialFallbacks(ip, port)
+                    createDialFallbacks(ip, port, fallbackName)
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "ERROR: DIAL identification exception for $ip:$port: ${e.message}. Creating fallback devices.", e)
-                createDialFallbacks(ip, port)
+                createDialFallbacks(ip, port, fallbackName)
             } finally {
                 connection?.disconnect()
             }
         }
     }
 
-    private fun createDialFallbacks(ip: String, port: Int) {
+    private fun createDialFallbacks(ip: String, port: Int, fallbackName: String? = null) {
         if (port == 8009) {
             val chromecastDev = CastingDevice(
                 id = "chromecast_$ip",
-                name = "Chromecast / Cast Device ($ip)",
+                name = fallbackName ?: "Chromecast / Cast Device ($ip)",
                 ipAddress = ip,
                 port = 8009,
                 protocolType = ProtocolType.CHROMECAST
@@ -874,7 +993,7 @@ class DiscoveryEngine(private val context: Context) {
             
             val fireTvDev = CastingDevice(
                 id = "fire_tv_8009_$ip",
-                name = "Amazon Fire TV [DIAL 8009] ($ip)",
+                name = fallbackName ?: "Amazon Fire TV [DIAL 8009] ($ip)",
                 ipAddress = ip,
                 port = 8009,
                 protocolType = ProtocolType.FIRE_TV
@@ -883,7 +1002,7 @@ class DiscoveryEngine(private val context: Context) {
         } else {
             val device = CastingDevice(
                 id = "fire_tv_$ip",
-                name = "Amazon Fire TV ($ip)",
+                name = fallbackName ?: "Amazon Fire TV ($ip)",
                 ipAddress = ip,
                 port = port,
                 protocolType = ProtocolType.FIRE_TV
