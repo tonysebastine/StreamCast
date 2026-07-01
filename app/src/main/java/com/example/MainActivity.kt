@@ -1075,6 +1075,7 @@ fun StreamCastDashboardOld(
                                 viewModel.bookmarkWebPage(url, title)
                                 Toast.makeText(context, "Added Bookmark: $title", Toast.LENGTH_SHORT).show()
                             },
+                            onUrlChanged = { activeBrowserUrl = it },
                             onVideoSelectedForCasting = { sniffedVideo ->
                                 val target = selectedCastingTarget
                                 if (target == null) {
@@ -4343,7 +4344,7 @@ fun StreamCastDashboardResponsive(
             },
             bottomBar = {
                 Column {
-                    if (!isSmartIslandEnabled && currentCastingState != CastingState.IDLE) {
+                    if (currentCastingState != CastingState.IDLE) {
                         PersistentMiniPlayer(
                             state = currentCastingState,
                             title = castTitle,
@@ -4351,7 +4352,8 @@ fun StreamCastDashboardResponsive(
                             duration = castDuration,
                             onTogglePlayPause = { viewModel.mediaController.togglePlayPause() },
                             onSeek = { pos -> viewModel.mediaController.seekTo(pos) },
-                            onStop = { viewModel.mediaController.stopCasting() }
+                            onStop = { viewModel.mediaController.stopCasting() },
+                            onClick = { selectedTab = 2 }
                         )
                     }
                     // Screen switching tab selector
@@ -4537,6 +4539,7 @@ fun StreamCastDashboardResponsive(
                                             viewModel.bookmarkWebPage(url, title)
                                             Toast.makeText(context, "Added Bookmark: $title", Toast.LENGTH_SHORT).show()
                                         },
+                                        onUrlChanged = { activeBrowserUrl = it },
                                         onVideoSelectedForCasting = { sniffedVideo ->
                                             val target = selectedCastingTarget
                                             if (target == null) {
@@ -4815,6 +4818,7 @@ fun StreamCastDashboardResponsive(
                                                 viewModel.bookmarkWebPage(url, title)
                                                 Toast.makeText(context, "Added Bookmark: $title", Toast.LENGTH_SHORT).show()
                                             },
+                                            onUrlChanged = { activeBrowserUrl = it },
                                             onVideoSelectedForCasting = { sniffedVideo ->
                                                 val target = selectedCastingTarget
                                                 if (target == null) {
@@ -4990,6 +4994,7 @@ fun PersistentMiniPlayer(
     onTogglePlayPause: () -> Unit,
     onSeek: (Long) -> Unit,
     onStop: () -> Unit,
+    onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Card(
@@ -4998,6 +5003,7 @@ fun PersistentMiniPlayer(
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         modifier = modifier
             .fillMaxWidth()
+            .clickable { onClick() }
             .testTag("persistent_mini_player")
     ) {
         Column(

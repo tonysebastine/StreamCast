@@ -68,6 +68,68 @@ class UniversalMediaController(private val context: android.content.Context? = n
     private fun getActiveContext(): android.content.Context? {
         return uiActivityRef?.get() ?: context
     }
+
+    private fun persistCastingSession() {
+        val ctx = getActiveContext() ?: return
+        try {
+            val prefs = ctx.getSharedPreferences("casting_session_prefs", android.content.Context.MODE_PRIVATE)
+            val device = _activeDevice.value
+            val editor = prefs.edit()
+            if (device != null) {
+                editor.putString("device_id", device.id)
+                editor.putString("device_name", device.name)
+                editor.putString("device_ip", device.ipAddress)
+                editor.putInt("device_port", device.port)
+                editor.putString("device_protocol", device.protocolType.name)
+                editor.putString("device_location", device.location)
+                editor.putString("cast_title", _currentTitle.value)
+                editor.putString("cast_url", _currentUrl.value)
+                editor.putString("cast_state", _state.value.name)
+                editor.putLong("cast_duration", _totalDuration.value)
+                editor.putLong("cast_position", _currentPosition.value)
+            } else {
+                editor.clear()
+            }
+            editor.apply()
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to persist casting session: ${e.message}")
+        }
+    }
+
+    fun restoreCastingSession() {
+        val ctx = getActiveContext() ?: return
+        try {
+            val prefs = ctx.getSharedPreferences("casting_session_prefs", android.content.Context.MODE_PRIVATE)
+            val deviceId = prefs.getString("device_id", null) ?: return
+            val deviceName = prefs.getString("device_name", "") ?: ""
+            val deviceIp = prefs.getString("device_ip", "") ?: ""
+            val devicePort = prefs.getInt("device_port", 0)
+            val protocolStr = prefs.getString("device_protocol", null)
+            val location = prefs.getString("device_location", null)
+            
+            if (protocolStr != null) {
+                val protocol = ProtocolType.valueOf(protocolStr)
+                val device = CastingDevice(
+                    id = deviceId,
+                    name = deviceName,
+                    ipAddress = deviceIp,
+                    port = devicePort,
+                    protocolType = protocol,
+                    location = location
+                )
+                _activeDevice.value = device
+                _currentTitle.value = prefs.getString("cast_title", "") ?: ""
+                _currentUrl.value = prefs.getString("cast_url", "") ?: ""
+                val stateStr = prefs.getString("cast_state", CastingState.IDLE.name)
+                _state.value = CastingState.valueOf(stateStr ?: CastingState.IDLE.name)
+                _totalDuration.value = prefs.getLong("cast_duration", 600000L)
+                _currentPosition.value = prefs.getLong("cast_position", 0L)
+                Log.d(TAG, "Restored active casting session on device: ${device.name}")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to restore casting session: ${e.message}")
+        }
+    }
     
     private val _state = MutableStateFlow(CastingState.IDLE)
     val state: StateFlow<CastingState> = _state.asStateFlow()
@@ -138,6 +200,22 @@ class UniversalMediaController(private val context: android.content.Context? = n
     private var castingJob: kotlinx.coroutines.Job? = null
 
     init {
+        restoreCastingSession()
+
+        // Auto persist session on state flow changes
+        dispatcherScope.launch {
+            kotlinx.coroutines.flow.combine(
+                state,
+                activeDevice,
+                currentTitle,
+                currentUrl,
+                totalDuration,
+                currentPosition
+            ) { args -> args }.collect {
+                persistCastingSession()
+            }
+        }
+
         // High fidelity background loop to simulate buffer flow & advance playing progress
         dispatcherScope.launch {
             while (true) {

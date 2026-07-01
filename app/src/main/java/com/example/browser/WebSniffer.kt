@@ -61,6 +61,7 @@ fun WebSnifferBrowser(
     onVideoSelectedForCasting: (SniffedVideo) -> Unit,
     initialUrl: String = "https://archive.org/details/classic_cartoons",
     onBookmarkAdded: ((String, String) -> Unit)? = null,
+    onUrlChanged: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     var urlText by remember { mutableStateOf(initialUrl) }
@@ -75,6 +76,15 @@ fun WebSnifferBrowser(
 
     val sniffedVideos = remember { mutableStateListOf<SniffedVideo>() }
     var webViewInstance by remember { mutableStateOf<WebView?>(null) }
+
+    LaunchedEffect(currentWebUrl) {
+        webViewInstance?.let { webView ->
+            if (webView.url != null && webView.url != currentWebUrl) {
+                webView.loadUrl(currentWebUrl)
+            }
+        }
+    }
+
     val keyboardController = LocalSoftwareKeyboardController.current
 
     val quickStations = remember {
@@ -531,6 +541,7 @@ fun FormatBadge(format: String) {
                             url?.let {
                                 urlText = it
                                 currentWebUrl = it
+                                onUrlChanged?.invoke(it)
                             }
                             // Inject early
                             view?.evaluateJavascript(snifferJs, null)
@@ -546,10 +557,7 @@ fun FormatBadge(format: String) {
                 }
             },
             update = { view ->
-                // Check if target URL changed externally
-                if (view.url != currentWebUrl) {
-                    view.loadUrl(currentWebUrl)
-                }
+                // Handled reactively by LaunchedEffect(currentWebUrl)
             },
             modifier = Modifier
                 .fillMaxWidth()
