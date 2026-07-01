@@ -4271,8 +4271,20 @@ fun StreamCastDashboardResponsive(
         }
     )
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(
+                brush = androidx.compose.ui.graphics.Brush.verticalGradient(
+                    colors = listOf(
+                        Color(0xFF161224), // Subtle cosmic deep violet/purple signal tint
+                        Color(0xFF0F0F0F)  // Pure deep black
+                    )
+                )
+            )
+    ) {
         Scaffold(
+            containerColor = Color.Transparent,
             modifier = Modifier
                 .fillMaxSize()
                 .windowInsetsPadding(WindowInsets.safeDrawing),

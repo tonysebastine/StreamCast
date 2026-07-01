@@ -3,6 +3,7 @@ package com.example.ui.components
 import android.app.Activity
 import android.content.Context
 import android.widget.Toast
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -246,10 +247,21 @@ fun DeviceDiscoveryEngineCard(
     viewModel: CastViewModel,
     isDiscovering: Boolean
 ) {
+    val infiniteTransition = rememberInfiniteTransition(label = "scanning_pulse")
+    val pulseAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.3f,
+        targetValue = 1.0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(800, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulse_alpha"
+    )
+
     Card(
         shape = RoundedCornerShape(16.dp),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.25f)),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)),
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
@@ -271,9 +283,9 @@ fun DeviceDiscoveryEngineCard(
                         ) {
                             Box(
                                 modifier = Modifier
-                                    .size(6.dp)
+                                    .size(8.dp)
                                     .clip(CircleShape)
-                                    .background(MaterialTheme.colorScheme.primary)
+                                    .background(Color(0xFF00C853).copy(alpha = pulseAlpha))
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
@@ -281,7 +293,7 @@ fun DeviceDiscoveryEngineCard(
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
                                 letterSpacing = 1.sp,
-                                color = MaterialTheme.colorScheme.primary
+                                color = Color(0xFF00C853)
                             )
                         }
                     } else {
