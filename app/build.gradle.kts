@@ -1,5 +1,6 @@
 import java.security.KeyStore as JKeyStore
 import java.io.FileInputStream as JFIS
+import java.util.Base64
 
 plugins {
   alias(libs.plugins.android.application)
@@ -183,4 +184,58 @@ dependencies {
   "ksp"(libs.hilt.compiler)
   implementation(libs.androidx.work.runtime.ktx)
 }
+
+tasks.register("generateKeystore") {
+    notCompatibleWithConfigurationCache("Custom task uses ProcessBuilder and non-serializable actions")
+    doLast {
+        val storePass = "Streamcast@tx1248"
+        val keyAlias = "StreamTx"
+        val keyPass = "Streamcast@tx1248"
+        val keystoreFile = file("${rootDir}/streamcast-key.jks")
+        if (!keystoreFile.exists()) {
+            println("Generating new release keystore at ${keystoreFile.absolutePath}...")
+            val pb = ProcessBuilder(
+                "keytool", "-genkey", "-v",
+                "-keystore", keystoreFile.absolutePath,
+                "-storepass", storePass,
+                "-alias", keyAlias,
+                "-keypass", keyPass,
+                "-keyalg", "RSA",
+                "-keysize", "2048",
+                "-validity", "10000",
+                "-dname", "CN=StreamCast,O=StreamCast,C=US"
+            )
+            pb.redirectOutput(ProcessBuilder.Redirect.INHERIT)
+            pb.redirectError(ProcessBuilder.Redirect.INHERIT)
+            val process = pb.start()
+            val exitCode = process.waitFor()
+            if (exitCode == 0) {
+                println("Keystore successfully generated.")
+            } else {
+                println("Failed to generate keystore. Exit code: $exitCode")
+            }
+        } else {
+            println("Keystore already exists at ${keystoreFile.absolutePath}.")
+        }
+
+        if (keystoreFile.exists()) {
+            val bytes = keystoreFile.readBytes()
+            val base64Str = Base64.getEncoder().encodeToString(bytes)
+            println("\n==================================================")
+            println("🔑 YOUR BASE64 ENCODED KEYSTORE (KEYSTORE_BASE64) 🔑")
+            println("==================================================")
+            println(base64Str)
+            println("==================================================")
+            println("\nConfigure these secrets in GitHub (Settings > Secrets and variables > Actions):")
+            println("1. KEYSTORE_BASE64  -> (Copy the base64 string above)")
+            println("2. STORE_PASSWORD    -> Streamcast@tx1248")
+            println("3. KEY_ALIAS         -> StreamTx")
+            println("4. KEY_PASSWORD      -> Streamcast@tx1248")
+            println("==================================================\n")
+        } else {
+            println("Error: Keystore file does not exist.")
+        }
+    }
+}
+
 
