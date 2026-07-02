@@ -4368,7 +4368,7 @@ fun StreamCastDashboardResponsive(
                             onTogglePlayPause = { viewModel.mediaController.togglePlayPause() },
                             onSeek = { pos -> viewModel.mediaController.seekTo(pos) },
                             onStop = { viewModel.mediaController.stopCasting() },
-                            onClick = { selectedTab = 2 }
+                            onClick = { selectedTab = 3 }
                         )
                     }
                     // Screen switching tab selector
@@ -4404,6 +4404,12 @@ fun StreamCastDashboardResponsive(
                                 NavigationBarItem(
                                     selected = selectedTab == 2,
                                     onClick = { selectedTab = 2 },
+                                    icon = { Icon(Icons.Default.Tv, contentDescription = "Mirroring tab") },
+                                    label = { Text("Mirroring", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                                )
+                                NavigationBarItem(
+                                    selected = selectedTab == 3,
+                                    onClick = { selectedTab = 3 },
                                     icon = { Icon(Icons.Default.Info, contentDescription = "Remote & Help Tab") },
                                     label = { Text("Remote & Help", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
                                 )
@@ -4448,7 +4454,8 @@ fun StreamCastDashboardResponsive(
                                         )
 
                                         MiracastMirroringCard(
-                                            context = context
+                                            context = context,
+                                            onRouteToWorkspace = { selectedTab = 2 }
                                         )
 
                                         ManualDeviceCard(
@@ -4465,7 +4472,7 @@ fun StreamCastDashboardResponsive(
                                             localMediaName = localMediaName,
                                             selectedCastingTarget = selectedCastingTarget,
                                             onCast = { viewModel.castLocalFile(it) },
-                                            onRouteToController = { selectedTab = 2 }
+                                            onRouteToController = { selectedTab = 3 }
                                         )
                                     }
 
@@ -4564,7 +4571,7 @@ fun StreamCastDashboardResponsive(
                                                 return@WebSnifferBrowser
                                             }
                                             viewModel.castWebVideo(target, sniffedVideo)
-                                            selectedTab = 2 // Auto route to remote control player
+                                            selectedTab = 3 // Auto route to remote control player
                                             Toast.makeText(context, "Initiating stream to ${target.name}...", Toast.LENGTH_SHORT).show()
                                         }
                                     )
@@ -4572,7 +4579,14 @@ fun StreamCastDashboardResponsive(
                             }
 
                             2 -> {
-                                // TAB 2: Controller & AI Diagnostics Support Panel - Dual column
+                                // TAB 2: Mirroring Workspace
+                                Box(modifier = Modifier.fillMaxSize()) {
+                                    MirrorWorkspaceScreen(context = context)
+                                }
+                            }
+
+                            3 -> {
+                                // TAB 3: Controller & AI Diagnostics Support Panel - Dual column
                                 Row(
                                     modifier = Modifier
                                         .fillMaxSize()
@@ -4707,7 +4721,8 @@ fun StreamCastDashboardResponsive(
 
                                         item {
                                             MiracastMirroringCard(
-                                                context = context
+                                                context = context,
+                                                onRouteToWorkspace = { selectedTab = 2 }
                                             )
                                         }
 
@@ -4778,7 +4793,7 @@ fun StreamCastDashboardResponsive(
                                                 localMediaName = localMediaName,
                                                 selectedCastingTarget = selectedCastingTarget,
                                                 onCast = { viewModel.castLocalFile(it) },
-                                                onRouteToController = { selectedTab = 2 }
+                                                onRouteToController = { selectedTab = 3 }
                                             )
                                         }
 
@@ -4832,7 +4847,7 @@ fun StreamCastDashboardResponsive(
                                                     return@WebSnifferBrowser
                                                 }
                                                 viewModel.castWebVideo(target, sniffedVideo)
-                                                selectedTab = 2 // Auto route to remote control player
+                                                selectedTab = 3 // Auto route to remote control player
                                                 Toast.makeText(context, "Initiating stream to ${target.name}...", Toast.LENGTH_SHORT).show()
                                             }
                                         )
@@ -4840,6 +4855,10 @@ fun StreamCastDashboardResponsive(
                                 }
 
                                 2 -> {
+                                    MirrorWorkspaceScreen(context = context)
+                                }
+
+                                3 -> {
                                     LazyColumn(
                                         modifier = Modifier
                                             .fillMaxSize()

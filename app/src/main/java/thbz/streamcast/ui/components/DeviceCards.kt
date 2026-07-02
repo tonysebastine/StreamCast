@@ -350,7 +350,8 @@ fun DeviceDiscoveryEngineCard(
 
 @Composable
 fun MiracastMirroringCard(
-    context: Context
+    context: Context,
+    onRouteToWorkspace: (() -> Unit)? = null
 ) {
     Card(
         shape = RoundedCornerShape(16.dp),
@@ -364,7 +365,7 @@ fun MiracastMirroringCard(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
                     Icon(
                         imageVector = Icons.Default.Cast,
                         contentDescription = "Miracast screen mirroring",
@@ -374,19 +375,26 @@ fun MiracastMirroringCard(
                     Spacer(modifier = Modifier.width(10.dp))
                     Column {
                         Text(
-                            text = "Miracast / Wi-Fi Display",
+                            text = "Miracast & Low-Latency Mirroring",
                             fontWeight = FontWeight.Bold,
                             fontSize = 13.sp,
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         Text(
-                            text = "Low latency direct screen sharing",
+                            text = "Real-time hardware casting & stream compositor",
                             fontSize = 11.sp,
                             color = MaterialTheme.colorScheme.outline
                         )
                     }
                 }
+            }
 
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 Button(
                     onClick = {
                         try {
@@ -404,10 +412,27 @@ fun MiracastMirroringCard(
                     colors = ButtonDefaults.buttonColors(
                         containerColor = Color(0xFFE91E63)
                     ),
-                    shape = RoundedCornerShape(8.dp),
-                    modifier = Modifier.testTag("miracast_settings_button")
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.weight(1f).testTag("miracast_settings_button")
                 ) {
-                    Text("Mirror", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                    Icon(Icons.Default.Router, contentDescription = "Cast settings", modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("System Cast", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
+
+                if (onRouteToWorkspace != null) {
+                    Button(
+                        onClick = onRouteToWorkspace,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary
+                        ),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.weight(1.1f).testTag("miracast_workspace_button")
+                    ) {
+                        Icon(Icons.Default.Tv, contentDescription = "Mirroring workspace", modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Workspace", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
         }
