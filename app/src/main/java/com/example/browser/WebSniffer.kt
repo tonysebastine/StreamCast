@@ -551,6 +551,8 @@ fun WebSnifferBrowser(
                             databaseEnabled = true
                             loadWithOverviewMode = true
                             useWideViewPort = true
+                            allowFileAccess = false
+                            allowContentAccess = false
                         }
                         
                         addJavascriptInterface(

@@ -18,6 +18,7 @@ class LocalHttpServer(private val context: Context, val port: Int = 8182) {
     private var serverSocket: ServerSocket? = null
     private var threadPool: java.util.concurrent.ExecutorService? = null
     private var isRunning = false
+    private val activeToken = java.util.UUID.randomUUID().toString().substring(0, 8)
 
     fun start() {
         if (isRunning) return
@@ -66,7 +67,7 @@ class LocalHttpServer(private val context: Context, val port: Int = 8182) {
     fun getLocalServerUrl(contentUri: Uri): String {
         val ip = getIpAddress() ?: "127.0.0.1"
         val encodedUri = java.net.URLEncoder.encode(contentUri.toString(), "UTF-8")
-        return "http://$ip:$port/stream?uri=$encodedUri"
+        return "http://$ip:$port/stream?uri=$encodedUri&token=$activeToken"
     }
 
     @Suppress("DEPRECATION")
@@ -165,14 +166,30 @@ class LocalHttpServer(private val context: Context, val port: Int = 8182) {
     }
 
     private fun serveUriStream(socket: Socket, path: String, rangeHeader: String?, isHeadRequest: Boolean) {
-        // Query param parsing: Expect /stream?uri=content%3A%2F%2F...
-        val decodedUriString = if (path.startsWith("/stream?uri=")) {
-            try {
-                java.net.URLDecoder.decode(path.substringAfter("/stream?uri="), "UTF-8")
-            } catch (e: Exception) {
-                null
-            }
-        } else {
+        val uriQuery = if (path.startsWith("/stream?")) path.substringAfter("/stream?") else ""
+        val params = uriQuery.split("&").associate { 
+            val parts = it.split("=")
+            val key = parts.getOrNull(0) ?: ""
+            val value = parts.getOrNull(1) ?: ""
+            key to value
+        }
+        val tokenParam = params["token"]
+        val encodedUriParam = params["uri"]
+
+        if (tokenParam == null || tokenParam != activeToken) {
+            Log.w(TAG, "Unauthorized request attempt: missing or invalid security token.")
+            sendForbidden(socket)
+            return
+        }
+
+        if (encodedUriParam == null) {
+            sendNotFound(socket)
+            return
+        }
+
+        val decodedUriString = try {
+            java.net.URLDecoder.decode(encodedUriParam, "UTF-8")
+        } catch (e: Exception) {
             null
         }
 
@@ -182,6 +199,22 @@ class LocalHttpServer(private val context: Context, val port: Int = 8182) {
         }
 
         val mediaUri = Uri.parse(decodedUriString)
+        val scheme = mediaUri.scheme
+        if (scheme != "content" && scheme != "file") {
+            Log.w(TAG, "Blocked request for unsupported scheme: $scheme")
+            sendForbidden(socket)
+            return
+        }
+
+        if (scheme == "file") {
+            val filePath = mediaUri.path
+            if (filePath != null && filePath.contains(context.packageName)) {
+                Log.w(TAG, "Blocked attempt to access private app file path: $filePath")
+                sendForbidden(socket)
+                return
+            }
+        }
+
         val pfd = try {
             context.contentResolver.openFileDescriptor(mediaUri, "r")
         } catch (e: Exception) {
@@ -282,6 +315,10 @@ class LocalHttpServer(private val context: Context, val port: Int = 8182) {
 
     private fun sendBadRequest(socket: Socket) {
         writeSimpleResponse(socket, "HTTP/1.1 400 Bad Request", "Bad Request")
+    }
+
+    private fun sendForbidden(socket: Socket) {
+        writeSimpleResponse(socket, "HTTP/1.1 403 Forbidden", "Forbidden: Invalid or missing security token")
     }
 
     private fun sendNotFound(socket: Socket) {
