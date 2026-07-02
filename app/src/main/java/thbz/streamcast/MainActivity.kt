@@ -4643,14 +4643,19 @@ fun StreamCastDashboardResponsive(
                                             activeError = activeError,
                                             isAnalyzing = isAnalyzing,
                                             diagnosticAnalysis = diagnosticAnalysis,
-                                            viewModel = viewModel
+                                            viewModel = viewModel,
+                                            discoveredDevices = discoveredDevices,
+                                            activeDevice = activeCastDevice,
+                                            isDiscovering = isDiscovering
                                         )
 
                                         RealTimeDebugConsoleCard(
                                             context = context,
                                             logsList = logsList,
                                             logFilterType = logFilterType,
-                                            onLogFilterTypeChange = { logFilterType = it }
+                                            onLogFilterTypeChange = { logFilterType = it },
+                                            isDiscovering = isDiscovering,
+                                            activeDevice = activeCastDevice
                                         )
 
                                         AppUpdatesCard(
@@ -4903,7 +4908,10 @@ fun StreamCastDashboardResponsive(
                                                 activeError = activeError,
                                                 isAnalyzing = isAnalyzing,
                                                 diagnosticAnalysis = diagnosticAnalysis,
-                                                viewModel = viewModel
+                                                viewModel = viewModel,
+                                                discoveredDevices = discoveredDevices,
+                                                activeDevice = activeCastDevice,
+                                                isDiscovering = isDiscovering
                                             )
                                         }
 
@@ -4912,7 +4920,9 @@ fun StreamCastDashboardResponsive(
                                                 context = context,
                                                 logsList = logsList,
                                                 logFilterType = logFilterType,
-                                                onLogFilterTypeChange = { logFilterType = it }
+                                                onLogFilterTypeChange = { logFilterType = it },
+                                                isDiscovering = isDiscovering,
+                                                activeDevice = activeCastDevice
                                             )
                                         }
 
